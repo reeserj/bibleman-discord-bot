@@ -258,8 +258,8 @@ class Scheduler {
       }
 
       embed.fields.push({
-        name: `${medal} ${user.username}`,
-        value: `${mention}\n${status}\n📈 **${user.completionRate}%** complete (${user.completedDays}/${user.totalDays} days)\n📅 **${user.daysBehind}** days behind`,
+        name: `${medal} ${mention}`,
+        value: `${status}\n📈 **${user.completionRate}%** complete (${user.completedDays}/${user.totalDays} days)\n📅 **${user.daysBehind}** days behind`,
         inline: false
       });
     });
