@@ -118,8 +118,12 @@ class BibleManBot {
       // Manually trigger today's reading
       await this.scheduler.triggerDailyReading();
       await message.reply('Today\'s reading has been sent! 📖');
+    } else if (args[0] === 'leaderboard') {
+      // Manually trigger weekly leaderboard
+      await this.scheduler.triggerWeeklyLeaderboard();
+      await message.reply('Weekly leaderboard has been sent! 🏆');
     } else {
-      await message.reply('Use `!reading today` to send today\'s reading message.');
+      await message.reply('Use `!reading today` to send today\'s reading message or `!reading leaderboard` to send the weekly leaderboard.');
     }
   }
 
@@ -142,6 +146,11 @@ class BibleManBot {
         {
           name: '!reading today',
           value: 'Send today\'s reading message',
+          inline: true
+        },
+        {
+          name: '!reading leaderboard',
+          value: 'Send weekly leaderboard',
           inline: true
         },
         {
