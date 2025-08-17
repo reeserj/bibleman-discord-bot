@@ -25,7 +25,7 @@ class MessageFormatter {
         fields: this.formatFields(readingPlan),
         timestamp: new Date(),
         footer: {
-          text: 'React with ✅ when completed or 📖 if in progress'
+          text: 'React with ✅ when completed'
         }
       };
 

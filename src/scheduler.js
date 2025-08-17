@@ -69,7 +69,6 @@ class Scheduler {
       
       // Add reaction buttons
       await message.react('✅'); // Completed
-      await message.react('📖'); // In Progress
       
       logger.info(`Daily reading message sent successfully for ${today}`);
       
@@ -121,7 +120,7 @@ class Scheduler {
       ],
       timestamp: new Date(),
       footer: {
-        text: 'React with ✅ when completed or 📖 if in progress'
+        text: 'React with ✅ when completed'
       }
     };
 
