@@ -69,68 +69,43 @@ class MessageFormatter {
       fields.push({
         name: '📚 Today\'s Reading',
         value: readingPlan.due,
-        inline: true
-      });
-    }
-
-    // Progress information
-    if (readingPlan.reading) {
-      fields.push({
-        name: '📊 Progress',
-        value: `Day ${readingPlan.reading}`,
-        inline: true
-      });
-    }
-
-    // Day number
-    if (readingPlan.day) {
-      fields.push({
-        name: '📅 Day',
-        value: readingPlan.day.toString(),
-        inline: true
-      });
-    }
-
-    // Resource links
-    if (readingPlan.bibleProject) {
-      fields.push({
-        name: '🎥 Bible Project Video',
-        value: this.formatLink(readingPlan.bibleProject, 'Watch Video'),
         inline: false
       });
     }
 
-    if (readingPlan.tenMinBible) {
-      fields.push({
-        name: '⏰ 10 Minute Bible Hour',
-        value: this.formatLink(readingPlan.tenMinBible, 'Listen Now'),
-        inline: false
-      });
+    // Consolidate all bonus content and links
+    let bonusContent = [];
+
+    // Add bonus text if available
+    if (readingPlan.bonusText && readingPlan.bonusText.trim()) {
+      bonusContent.push(readingPlan.bonusText);
     }
 
-    // Bonus content
-    if (readingPlan.bonusText) {
-      fields.push({
-        name: '🎁 Bonus Content',
-        value: readingPlan.bonusText,
-        inline: false
-      });
+    // Add Bible Project link if available
+    if (readingPlan.bibleProject && readingPlan.bibleProject.trim()) {
+      bonusContent.push(`🎥 **Bible Project Video**: ${this.formatLink(readingPlan.bibleProject, 'Watch Video')}`);
     }
 
-    // Start of book information
-    if (readingPlan.startOfBook) {
-      fields.push({
-        name: '📖 Book Introduction',
-        value: readingPlan.startOfBook,
-        inline: false
-      });
+    // Add 10 Minute Bible Hour link if available
+    if (readingPlan.tenMinBible && readingPlan.tenMinBible.trim()) {
+      bonusContent.push(`⏰ **10 Minute Bible Hour**: ${this.formatLink(readingPlan.tenMinBible, 'Listen Now')}`);
     }
 
-    // Additional bonus
-    if (readingPlan.bonus) {
+    // Add start of book information if available
+    if (readingPlan.startOfBook && readingPlan.startOfBook.trim()) {
+      bonusContent.push(`📖 **Book Introduction**: ${readingPlan.startOfBook}`);
+    }
+
+    // Add additional bonus content if available
+    if (readingPlan.bonus && readingPlan.bonus.trim()) {
+      bonusContent.push(readingPlan.bonus);
+    }
+
+    // Only add bonus content field if there's content
+    if (bonusContent.length > 0) {
       fields.push({
-        name: '💎 Additional Resources',
-        value: readingPlan.bonus,
+        name: '🎁 Bonus Content & Resources',
+        value: bonusContent.join('\n'),
         inline: false
       });
     }
