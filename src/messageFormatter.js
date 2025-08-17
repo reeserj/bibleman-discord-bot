@@ -1,0 +1,232 @@
+const logger = require('./utils/logger');
+
+class MessageFormatter {
+  constructor() {
+    this.colors = {
+      primary: 0x0099ff,    // Blue
+      success: 0x00ff00,    // Green
+      warning: 0xffaa00,    // Orange
+      error: 0xff0000,      // Red
+      info: 0x00ffff        // Cyan
+    };
+  }
+
+  /**
+   * Format a reading plan into a Discord embed
+   * @param {Object} readingPlan - The reading plan data
+   * @returns {Object} Discord embed object
+   */
+  formatDailyReading(readingPlan) {
+    try {
+      const embed = {
+        color: this.colors.primary,
+        title: this.formatTitle(readingPlan),
+        description: this.formatDescription(readingPlan),
+        fields: this.formatFields(readingPlan),
+        timestamp: new Date(),
+        footer: {
+          text: 'React with ✅ when completed or 📖 if in progress'
+        }
+      };
+
+      // Add thumbnail if it's the start of a new book
+      if (readingPlan.startOfBook) {
+        embed.thumbnail = {
+          url: 'https://cdn.discordapp.com/emojis/📖.png'
+        };
+      }
+
+      return { embeds: [embed] };
+    } catch (error) {
+      logger.error('Error formatting daily reading:', error);
+      return this.formatErrorEmbed('Failed to format reading plan');
+    }
+  }
+
+  formatTitle(readingPlan) {
+    const date = readingPlan.date || new Date().toISOString().split('T')[0];
+    return `📖 Daily Bible Reading - ${date}`;
+  }
+
+  formatDescription(readingPlan) {
+    let description = readingPlan.message || 'Daily Bible reading assignment';
+    
+    // Extract progress percentage if available
+    const progressMatch = description.match(/(\d+\.?\d*%)/);
+    if (progressMatch) {
+      const progress = progressMatch[1];
+      description = description.replace(progress, `**${progress}**`);
+    }
+
+    return description;
+  }
+
+  formatFields(readingPlan) {
+    const fields = [];
+
+    // Main reading assignment
+    if (readingPlan.due) {
+      fields.push({
+        name: '📚 Today\'s Reading',
+        value: readingPlan.due,
+        inline: true
+      });
+    }
+
+    // Progress information
+    if (readingPlan.reading) {
+      fields.push({
+        name: '📊 Progress',
+        value: `Day ${readingPlan.reading}`,
+        inline: true
+      });
+    }
+
+    // Day number
+    if (readingPlan.day) {
+      fields.push({
+        name: '📅 Day',
+        value: readingPlan.day.toString(),
+        inline: true
+      });
+    }
+
+    // Resource links
+    if (readingPlan.bibleProject) {
+      fields.push({
+        name: '🎥 Bible Project Video',
+        value: this.formatLink(readingPlan.bibleProject, 'Watch Video'),
+        inline: false
+      });
+    }
+
+    if (readingPlan.tenMinBible) {
+      fields.push({
+        name: '⏰ 10 Minute Bible Hour',
+        value: this.formatLink(readingPlan.tenMinBible, 'Listen Now'),
+        inline: false
+      });
+    }
+
+    // Bonus content
+    if (readingPlan.bonusText) {
+      fields.push({
+        name: '🎁 Bonus Content',
+        value: readingPlan.bonusText,
+        inline: false
+      });
+    }
+
+    // Start of book information
+    if (readingPlan.startOfBook) {
+      fields.push({
+        name: '📖 Book Introduction',
+        value: readingPlan.startOfBook,
+        inline: false
+      });
+    }
+
+    // Additional bonus
+    if (readingPlan.bonus) {
+      fields.push({
+        name: '💎 Additional Resources',
+        value: readingPlan.bonus,
+        inline: false
+      });
+    }
+
+    return fields;
+  }
+
+  formatLink(url, text) {
+    return `[${text}](${url})`;
+  }
+
+  formatErrorEmbed(message) {
+    return {
+      embeds: [{
+        color: this.colors.error,
+        title: '❌ Error',
+        description: message,
+        timestamp: new Date()
+      }]
+    };
+  }
+
+  formatSuccessEmbed(message) {
+    return {
+      embeds: [{
+        color: this.colors.success,
+        title: '✅ Success',
+        description: message,
+        timestamp: new Date()
+      }]
+    };
+  }
+
+  formatProgressEmbed(userProgress) {
+    const embed = {
+      color: this.colors.info,
+      title: '📊 Reading Progress',
+      fields: [],
+      timestamp: new Date()
+    };
+
+    if (userProgress.totalDays) {
+      embed.fields.push({
+        name: '📅 Total Days',
+        value: userProgress.totalDays.toString(),
+        inline: true
+      });
+    }
+
+    if (userProgress.completedDays) {
+      embed.fields.push({
+        name: '✅ Completed',
+        value: userProgress.completedDays.toString(),
+        inline: true
+      });
+    }
+
+    if (userProgress.streak) {
+      embed.fields.push({
+        name: '🔥 Current Streak',
+        value: userProgress.streak.toString(),
+        inline: true
+      });
+    }
+
+    if (userProgress.completionRate) {
+      embed.fields.push({
+        name: '📈 Completion Rate',
+        value: `${userProgress.completionRate}%`,
+        inline: true
+      });
+    }
+
+    return { embeds: [embed] };
+  }
+
+  formatLeaderboardEmbed(leaderboard) {
+    const embed = {
+      color: this.colors.primary,
+      title: '🏆 Reading Leaderboard',
+      description: 'Top readers this week',
+      fields: [],
+      timestamp: new Date()
+    };
+
+    leaderboard.forEach((entry, index) => {
+      const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '📊';
+      embed.fields.push({
+        name: `${medal} ${entry.username}`,
+        value: `${entry.completedDays} days completed (${entry.completionRate}%)`,
+        inline: false
+      });
+    });
+
+    return { embeds: [embed] };
+  }
+}
+
+module.exports = MessageFormatter;
