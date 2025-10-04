@@ -9,14 +9,56 @@ The user wants to create a Discord bot that helps track Bible reading progress. 
 - Track reading performance in Google Sheets
 - Use an Excel sheet as the source for reading plans
 
+**UPDATE**: The user has requested to remove all standalone desktop app features, keeping only the core Discord bot functionality.
+
+**NEW REQUEST**: The user wants to install the Discord MCP server from https://github.com/v-3/discordmcp to enable Claude integration with Discord channels.
+
+**MCP SERVER INSTALLATION COMPLETED** ✅
+
+**What's Been Installed:**
+1. **Discord MCP Server Repository**: Cloned from https://github.com/v-3/discordmcp
+2. **Dependencies**: All npm packages installed and vulnerabilities fixed
+3. **Build**: TypeScript compiled successfully to JavaScript
+4. **Configuration**: Environment variables configured with existing Discord token
+5. **Testing**: Server tested and confirmed working (Discord bot connects successfully)
+
+**Installation Location**: `/home/reese/.cursor/Bibleman/discordmcp/`
+
+**Available Tools:**
+- `send-message`: Send messages to Discord channels
+- `read-messages`: Read recent messages from Discord channels
+
+**How to Use with Claude Desktop:**
+1. Open Claude Desktop configuration file:
+   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+2. Add the Discord MCP server configuration:
+```json
+{
+  "mcpServers": {
+    "discord": {
+      "command": "node",
+      "args": ["/home/reese/.cursor/Bibleman/discordmcp/build/index.js"],
+      "env": {
+        "DISCORD_TOKEN": "[YOUR_BOT_TOKEN_HERE]"
+      }
+    }
+  }
+}
+```
+3. Restart Claude Desktop
+
+**Current Status**: Discord MCP server is fully installed and ready for Claude integration.
+
 ## Key Challenges and Analysis
 
 1. **Discord Bot Setup**: Need to create a Discord application and bot, handle authentication
 2. **Scheduling**: Implement daily message sending at 5 AM CST using cron jobs or similar
-4. **Google Sheets Integration**:Parse Excel files to extract daily reading plans,  Track user reactions and reading progress
-5. **Message Formatting**: Create attractive, readable Discord messages with embeds
-6. **Reaction Tracking**: Monitor user reactions and store data appropriately
-7. **Error Handling**: Handle various edge cases and failures gracefully
+3. **Google Sheets Integration**: Parse Excel files to extract daily reading plans, Track user reactions and reading progress
+4. **Message Formatting**: Create attractive, readable Discord messages with embeds
+5. **Reaction Tracking**: Monitor user reactions and store data appropriately
+6. **Error Handling**: Handle various edge cases and failures gracefully
+7. **Configuration**: Use environment variables for Discord channel configuration
 
 ## Detailed Implementation Plan
 
@@ -24,7 +66,7 @@ The user wants to create a Discord bot that helps track Bible reading progress. 
 **Goal**: Create a working Discord bot with basic functionality
 
 #### 1.1 Discord Application Setup
-- [ ] Create Discord application at https://discord.com/developers/applications
+- [x] Create Discord application at https://discord.com/developers/applications
 - [ ] Add bot to application and get bot token
 - [ ] Configure bot permissions (Send Messages, Read Message History, Add Reactions)
 - [ ] Generate invite link with proper scopes and permissions
@@ -43,7 +85,7 @@ The user wants to create a Discord bot that helps track Bible reading progress. 
 **Goal**: Connect to Google Sheets for reading plans and progress tracking
 
 #### 2.1 Google Cloud Setup
-- [ ] Create Google Cloud Project
+- [x] Create Google Cloud Project
 - [ ] Enable Google Sheets API
 - [ ] Create service account and download credentials
 - [ ] Set up Google Sheets for reading plans (template structure)
@@ -115,7 +157,24 @@ The user wants to create a Discord bot that helps track Bible reading progress. 
 
 **Success Criteria**: Robust error handling, user-friendly commands, system monitoring
 
-### Phase 6: Testing & Deployment (Priority: MEDIUM)
+### Phase 6: Configuration Management (Priority: MEDIUM)
+**Goal**: Simplify bot configuration and setup
+
+#### 6.1 Environment Configuration
+- [x] Use .env file for all configuration settings
+- [x] Provide env.example template for easy setup
+- [x] Add configuration validation and error messages
+- [x] Create setup scripts for easy configuration
+
+#### 6.2 Bot Integration Updates
+- [x] Bot uses DISCORD_CHANNEL_ID from environment variables
+- [x] Add channel validation and error handling
+- [x] Implement proper error messages for configuration issues
+- [x] Add fallback behavior for missing configuration
+
+**Success Criteria**: Bot configuration is simple and straightforward, all settings managed through .env file
+
+### Phase 7: Testing & Deployment (Priority: MEDIUM)
 **Goal**: Production-ready deployment
 
 #### 6.1 Testing
@@ -191,48 +250,153 @@ The user wants to create a Discord bot that helps track Bible reading progress. 
 - [ ] Add health check and monitoring
 
 **Phase 6 (MEDIUM Priority):**
+- [x] Use .env file for all configuration settings
+- [x] Provide env.example template for easy setup
+- [x] Add configuration validation and error messages
+- [x] Create setup scripts for easy configuration
+- [x] Bot uses DISCORD_CHANNEL_ID from environment variables
+- [x] Add channel validation and error handling
+
+**Phase 7 (MEDIUM Priority):**
 - [ ] Write unit and integration tests
 - [ ] Create deployment scripts and documentation
 - [ ] Set up production environment
 
 ## Executor's Feedback or Assistance Requests
 
-**Phase 1 Complete - Core Bot Foundation Implemented! ✅**
+**Channel Selection Feature Completed! ✅**
 
-**What's Been Accomplished:**
-- ✅ All core bot files created and implemented
-- ✅ Daily message scheduling system ready
-- ✅ Beautiful Discord embed formatting system
-- ✅ Environment variable validation
-- ✅ Command handling system (ping, reading, progress, help)
-- ✅ Comprehensive logging system
-- ✅ Dependencies installed and project structure complete
+**What's Been Implemented:**
+
+1. **Text-Based Channel Selector:**
+   - Created `channel-selector.js` with interactive CLI interface
+   - Lists all accessible Discord channels with numerical selection
+   - Shows current channel selection and allows changes
+   - Validates channel permissions before saving
+
+2. **Desktop App Integration:**
+   - Added `select-channel.sh` script for easy channel selection
+   - Updated `start-bot.sh` to include channel selection option
+   - Added new command: `./start-bot.sh channel`
+   - Integrated into existing bot management workflow
+
+3. **Bot Channel Logic Updates:**
+   - Enhanced `scheduler.js` with dynamic channel validation
+   - Added channel change detection and caching
+   - Improved error handling for channel access issues
+   - Added channel information commands to bot
+
+4. **Configuration Persistence:**
+   - Channel selection automatically saves to `.env` file
+   - Updates `DISCORD_CHANNEL_ID` and `DISCORD_GUILD_ID`
+   - Adds timestamp for channel selection tracking
+
+**How to Use:**
+1. Run `./start-bot.sh channel` to select a channel
+2. Or run `./select-channel.sh` directly
+3. Follow the interactive prompts to select a channel
+4. Restart the bot to use the new channel selection
 
 **Current Status:**
-- Bot foundation is complete and ready for Discord application setup
-- All core functionality implemented with placeholder data
-- Ready to proceed with Discord bot application creation
+- Channel selection feature is fully implemented
+- Ready for testing with actual Discord server
+- Bot will validate channel access before sending messages
+- All channel changes are persisted to configuration
 
-**Next Steps for User:**
-1. **Create Discord Application**: Go to https://discord.com/developers/applications
-2. **Create New Application**: Name it "BibleMan Bot"
-3. **Add Bot**: Go to "Bot" section and create a bot
-4. **Get Credentials**: Copy the bot token and client ID
-5. **Set Permissions**: Enable required intents (Message Content, Server Members, etc.)
-6. **Create .env file**: Use the env.example template with your credentials
+**Next Steps:**
+1. Test the channel selection with a real Discord server
+2. Verify that bot messages are sent to the selected channel
+3. Test channel validation and error handling
 
-**Technical Notes:**
-- Node.js version 12.22.9 installed (some packages show warnings but should work)
-- All dependencies installed successfully
-- Bot structure follows Discord.js v14 patterns
-- Ready for Google Sheets integration in Phase 2
+**What's Been Fixed:**
 
-**Ready for Phase 2**: Once Discord application is created, we can proceed with Google Sheets integration.
+1. **User Tagging Issue Fixed:**
+   - Updated leaderboard to properly display usernames instead of just user IDs
+   - Added proper Discord mention formatting (`<@userId>`)
+   - Now shows both username and mention for better user experience
 
-**Important Notes:**
-- The Google Sheet contains rich data including progress percentages, multiple resource links, and structured reading assignments
-- Need to ensure the bot has read access to the "2026 Plan" sheet
-- The sheet includes Bible Project videos and 10 Minute Bible Hour links that should be prominently featured
+2. **Days Behind Calculation Fixed:**
+   - Replaced hardcoded 7-day assumption with real reading plan data
+   - Added `getTotalReadingDays()` method to calculate actual total days from the reading plan sheet
+   - Added `getCurrentReadingDay()` method to determine current day based on actual dates
+   - Days behind now calculated as: `currentDay - completedDays` instead of `totalDays - completedDays`
+
+3. **Days Running Calculation Added:**
+   - Leaderboard now shows "Day X of Y total days" in the summary
+   - Calculates current day based on today's date vs reading plan dates
+   - Uses the "Day" column from the reading plan sheet for accurate day numbering
+
+4. **Real Data Integration:**
+   - Updated `getWeeklyProgress()` to use real data from SheetsTracker instead of fallback data
+   - Leaderboard now pulls actual user completion data from Google Sheets
+   - Proper error handling with fallback data only when real data fails
+
+**Technical Implementation:**
+- Added new methods in `sheetsTracker.js`: `getTotalReadingDays()` and `getCurrentReadingDay()`
+- Updated `getLeaderboard()` to use real calculations instead of hardcoded values
+- Enhanced `formatWeeklyLeaderboard()` in `scheduler.js` with better user display and days running info
+- Improved error handling and logging throughout
+
+**Current Status:**
+- Bot is running with updated leaderboard functionality
+- Ready to test the improved leaderboard with real data
+- All calculations now based on actual reading plan data from Google Sheets
+
+**Next Steps:**
+1. Test the leaderboard by using the `/leaderboard` command in Discord
+2. Verify that user mentions work properly
+3. Confirm that days behind calculation is accurate
+4. Check that days running information is correct
+
+**Ready for Testing**: The leaderboard should now properly tag users and show accurate progress calculations based on the actual reading plan data.
+
+**STANDALONE APP FEATURES REMOVED** ✅
+
+**What Was Removed:**
+1. **Desktop Application Files:**
+   - `bibleman.desktop` - Desktop application launcher
+   - `install-desktop-app.sh` - Desktop app installer script
+   - `create-icon.sh` - Icon creation script
+   - `DESKTOP_APP_README.md` - Desktop app documentation
+
+2. **Startup and Management Scripts:**
+   - `start-bot.sh` - Main startup script with full functionality
+   - `select-channel.sh` - Channel selection script
+
+3. **Channel Selection Functionality:**
+   - `channel-selector.js` - Interactive channel selector
+   - All GUI-based channel selection features
+
+4. **Icon Files:**
+   - `icons/` directory and all contents
+   - `bibleman.png`, `bibleman.svg`, `bibleman.txt`
+   - `create-simple-icon.py`
+
+**What Remains:**
+- Core Discord bot functionality (`src/bot.js`, `src/scheduler.js`, etc.)
+- Google Sheets integration (`src/sheetsParser.js`, `src/sheetsTracker.js`)
+- Message formatting (`src/messageFormatter.js`)
+- Configuration through `.env` file
+- Setup scripts (`setup.js`, `update-env.sh`, `fix-discord-setup.js`)
+
+**How to Run the Bot Now:**
+```bash
+# Install dependencies
+npm install
+
+# Configure environment
+cp env.example .env
+# Edit .env with your Discord token and settings
+
+# Start the bot
+node src/bot.js
+```
+
+**Current Status:**
+- All standalone desktop app features have been successfully removed
+- Bot now runs as a standard Node.js application
+- Configuration is managed through environment variables
+- No GUI or desktop integration remains
 
 ## Technical Specifications
 

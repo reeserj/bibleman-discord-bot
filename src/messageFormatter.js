@@ -64,15 +64,6 @@ class MessageFormatter {
   formatFields(readingPlan) {
     const fields = [];
 
-    // Main reading assignment
-    if (readingPlan.due) {
-      fields.push({
-        name: '📚 Today\'s Reading',
-        value: readingPlan.due,
-        inline: false
-      });
-    }
-
     // Consolidate all bonus content and links
     let bonusContent = [];
 

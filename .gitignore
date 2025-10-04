@@ -118,3 +118,4 @@ Thumbs.db
 # Discord bot specific
 config.json
 token.json
+discordmcp/
