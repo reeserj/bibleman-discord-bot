@@ -1,0 +1,31 @@
+[Unit]
+Description=BibleMan Discord Bot
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=reese
+Group=reese
+WorkingDirectory=/home/reese/.cursor/Bibleman
+ExecStart=/usr/bin/node src/bot.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bibleman-bot
+
+# Environment variables
+Environment=NODE_ENV=production
+EnvironmentFile=/home/reese/.cursor/Bibleman/.env
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/reese/.cursor/Bibleman
+
+[Install]
+WantedBy=multi-user.target
+
