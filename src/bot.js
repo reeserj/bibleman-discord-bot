@@ -9,6 +9,7 @@ const SheetsTracker = require('./sheetsTracker');
 const MessageFormatter = require('./messageFormatter');
 const GuildConfig = require('./guildConfig');
 const GroupMeService = require('./groupmeService');
+const WebhookServer = require('./webhookServer');
 const logger = require('./utils/logger');
 const Helpers = require('./utils/helpers');
 
@@ -41,6 +42,7 @@ class BibleManBot {
     this.guildConfig = new GuildConfig();
     this.groupMeService = new GroupMeService();
     this.scheduler = new Scheduler(this.client, this.messageFormatter, this.sheetsParser, this.sheetsTracker, this.guildConfig);
+    this.webhookServer = new WebhookServer(this);
 
     this.setupEventHandlers();
     this.registerSlashCommands();
@@ -506,9 +508,95 @@ class BibleManBot {
     }
   }
 
+  async handleGroupMeMessage(groupMeMessage) {
+    try {
+      // Don't process messages from the bot itself
+      if (groupMeMessage.user_id === 'system') {
+        return;
+      }
+
+      // Get the group name for logging
+      const groupName = groupMeMessage.name || 'Unknown Group';
+      const userName = groupMeMessage.name || 'Unknown User';
+      const messageText = groupMeMessage.text || '';
+
+      logger.info(`Processing GroupMe message from ${userName} in ${groupName}: ${messageText.substring(0, 100)}`);
+
+      // Find the corresponding Discord channel based on group
+      const discordChannelId = this.getDiscordChannelForGroup(groupMeMessage.group_id);
+      
+      if (!discordChannelId) {
+        logger.warn(`No Discord channel configured for GroupMe group ${groupMeMessage.group_id}`);
+        return;
+      }
+
+      // Get the Discord channel
+      const channel = this.client.channels.cache.get(discordChannelId);
+      if (!channel) {
+        logger.error(`Discord channel ${discordChannelId} not found`);
+        return;
+      }
+
+      // Format the message for Discord
+      const discordMessage = this.formatGroupMeMessageForDiscord(groupMeMessage);
+      
+      // Send to Discord
+      await channel.send(discordMessage);
+      logger.info(`Forwarded GroupMe message to Discord channel ${channel.name}`);
+
+    } catch (error) {
+      logger.error('Error handling GroupMe message:', error);
+    }
+  }
+
+  getDiscordChannelForGroup(groupMeGroupId) {
+    // Map GroupMe group IDs to Discord channel IDs
+    // You can configure this mapping in your environment variables or config
+    
+    // Bible Plan group -> configured Discord channel
+    if (groupMeGroupId === process.env.GROUPME_BIBLE_PLAN_GROUP_ID) {
+      return process.env.DISCORD_CHANNEL_ID;
+    }
+    
+    // Lockerroom group -> configured lockerroom channel (if you have one)
+    if (groupMeGroupId === process.env.GROUPME_LOCKERROOM_GROUP_ID) {
+      return process.env.DISCORD_LOCKERROOM_CHANNEL_ID;
+    }
+
+    // Default fallback
+    return process.env.DISCORD_CHANNEL_ID;
+  }
+
+  formatGroupMeMessageForDiscord(groupMeMessage) {
+    const userName = groupMeMessage.name || 'Unknown User';
+    const messageText = groupMeMessage.text || '';
+    
+    // Format as Discord embed for better presentation
+    return {
+      embeds: [{
+        color: 0x00BFFF, // GroupMe blue color
+        author: {
+          name: `${userName} (GroupMe)`,
+          icon_url: groupMeMessage.avatar_url
+        },
+        description: messageText,
+        timestamp: new Date(groupMeMessage.created_at * 1000).toISOString(),
+        footer: {
+          text: 'via GroupMe'
+        }
+      }]
+    };
+  }
+
   async start() {
     try {
       await this.client.login(process.env.DISCORD_TOKEN);
+      
+      // Start webhook server if enabled
+      if (process.env.ENABLE_WEBHOOK_SERVER === 'true') {
+        await this.webhookServer.start();
+      }
+      
       logger.info('Bot started successfully');
     } catch (error) {
       logger.error('Failed to start bot:', error);
@@ -519,6 +607,12 @@ class BibleManBot {
   async stop() {
     try {
       this.scheduler.stop();
+      
+      // Stop webhook server if it's running
+      if (this.webhookServer) {
+        await this.webhookServer.stop();
+      }
+      
       await this.client.destroy();
       logger.info('Bot stopped successfully');
     } catch (error) {

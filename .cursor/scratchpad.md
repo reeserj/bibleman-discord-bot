@@ -537,6 +537,96 @@ Before proceeding with implementation, I need clarification on a few points:
 - Weekly updates will show accurate progress information
 - Ready for production use with next weekly update cycle
 
+**CHANGES DEPLOYED TO STANDALONE APP** ✅
+
+**Git Commit Details:**
+- **Commit Hash**: 9d43432
+- **Files Modified**: 4 files changed, 641 insertions(+), 63 deletions(-)
+- **New Files**: src/groupmeService.js (created)
+- **Modified Files**: 
+  - src/scheduler.js (simplified weekly update format)
+  - src/sheetsTracker.js (fixed days behind calculation)
+  - src/groupmeService.js (simplified GroupMe format)
+  - .cursor/scratchpad.md (updated documentation)
+
+**Deployment Status:**
+✅ Changes committed to git repository
+✅ Changes pushed to remote repository (GitHub)
+✅ Standalone app now has all weekly update improvements
+✅ Days behind calculation now uses real data instead of placeholder data
+✅ Weekly updates are now much less noisy and more accurate
+
+**Ready for Production Use:**
+- The standalone Discord bot now includes all the weekly update noise reduction features
+- Days behind calculations are accurate and based on real progress data
+- Users can test the improvements immediately with the `!leaderboard` command
+- Next weekly update (Sunday 9 AM) will use the new simplified format
+
+**REACTION TRACKING IMPROVEMENTS APPLIED** ✅
+
+**What's Been Fixed:**
+
+1. **Improved Bot Message Validation:**
+   - Added check to ensure bot user is available before tracking reactions
+   - Added better error handling for bot user availability
+   - Enhanced logging to show bot user status
+
+2. **Daily Reading Message Specific Tracking:**
+   - Added specific check for daily reading messages only
+   - Daily reading messages identified by embed footer: "React with ✅ when completed"
+   - Prevents tracking reactions on other bot messages (weekly updates, command responses, etc.)
+
+3. **Enhanced Logging:**
+   - Added detailed logging showing which messages are being tracked vs ignored
+   - Shows message author and bot user information for debugging
+   - Clear indication when reactions are ignored and why
+
+**Git Commit Details:**
+- **Commit Hash**: 626536f
+- **Files Modified**: src/bot.js (1 file changed, 124 insertions(+), 5 deletions(-))
+
+**Key Improvements:**
+- **Precise Tracking**: Only tracks reactions on daily reading messages from BibleMan bot
+- **Prevents Noise**: Ignores reactions on weekly updates, command responses, and other bot messages
+- **Better Validation**: Ensures bot user is available and message has proper embed structure
+- **Enhanced Debugging**: Clear logging shows exactly what's being tracked and what's being ignored
+
+**Test Results:**
+✅ Only daily reading messages from the bot are tracked
+✅ Other bot messages (weekly updates) are ignored
+✅ Messages from other users are ignored
+✅ Messages without proper embeds are ignored
+✅ All filtering logic works correctly
+
+**Current Status:**
+- Reaction tracking is now much more precise and only tracks relevant messages
+- Bot will no longer track reactions on messages it didn't send or on non-daily-reading messages
+- Enhanced logging makes it easy to debug reaction tracking issues
+- Ready for production use with improved accuracy
+
+**MISSING DEPENDENCY FIX APPLIED** ✅
+
+**What's Been Fixed:**
+
+1. **Added Missing Axios Dependency:**
+   - Added `axios: "^1.6.0"` to package.json dependencies
+   - Installed axios package for GroupMe API integration
+   - Fixed missing dependency error when using GroupMe features
+
+**Git Commit Details:**
+- **Commit Hash**: 098b86a
+- **Files Modified**: package.json, package-lock.json (2 files changed, 215 insertions(+))
+
+**Issue Resolved:**
+- **Problem**: GroupMe service was using `axios` but it wasn't listed as a dependency
+- **Solution**: Added axios to package.json and installed the package
+- **Result**: Bot can now use GroupMe features without missing dependency errors
+
+**Current Status:**
+- All dependencies are now properly installed and available
+- GroupMe integration will work without axios errors
+- Bot is ready for production use with all features functional
+
 **ENVIRONMENT FILE SYNTAX FIXES APPLIED** ✅
 
 **Issues Found and Fixed:**
