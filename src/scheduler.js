@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 const logger = require('./utils/logger');
+const GroupMeService = require('./groupmeService');
 
 class Scheduler {
   constructor(client, messageFormatter, sheetsParser, sheetsTracker, guildConfig) {
@@ -9,6 +10,7 @@ class Scheduler {
     this.sheetsParser = sheetsParser;
     this.sheetsTracker = sheetsTracker;
     this.guildConfig = guildConfig;
+    this.groupMeService = new GroupMeService();
     this.scheduleTask = null;
     this.timezone = process.env.TIMEZONE || 'America/Chicago';
     this.scheduleTime = process.env.SCHEDULE_TIME || '0 5 * * *'; // 5 AM CST daily
@@ -101,6 +103,14 @@ class Scheduler {
       await message.react('✅'); // Completed
       
       logger.info(`Daily reading message sent successfully for ${today}`);
+      
+      // Also send to GroupMe Bible Plan group
+      try {
+        await this.groupMeService.sendDailyReadingToGroupMe(readingPlan, formattedMessage);
+      } catch (groupMeError) {
+        logger.error('Failed to send daily reading to GroupMe:', groupMeError);
+        // Don't fail the entire operation if GroupMe fails
+      }
       
     } catch (error) {
       logger.error('Failed to send daily reading:', error);
@@ -247,6 +257,14 @@ class Scheduler {
         await channel.send(formattedMessage);
         
         logger.info(`Weekly leaderboard sent successfully to ${guild.name}`);
+        
+        // Also send to GroupMe Bible Plan group
+        try {
+          await this.groupMeService.sendWeeklyLeaderboardToGroupMe(weeklyProgress);
+        } catch (groupMeError) {
+          logger.error('Failed to send weekly leaderboard to GroupMe:', groupMeError);
+          // Don't fail the entire operation if GroupMe fails
+        }
       }
     } catch (error) {
       logger.error('Failed to send weekly leaderboard:', error);
@@ -304,59 +322,45 @@ class Scheduler {
   }
 
   async formatWeeklyLeaderboard(weeklyProgress) {
+    // Filter users to only show those who are 2+ days behind
+    const behindUsers = weeklyProgress.filter(u => u.daysBehind >= 2);
+    const caughtUpUsers = weeklyProgress.filter(u => u.daysBehind < 2);
+    
     const embed = {
       color: 0x00ff00, // Green color for weekly reports
-      title: '🏆 Weekly Bible Reading Report',
+      title: 'Weekly Update',
       description: `**Week ending ${moment().tz(this.timezone).format('MMMM Do, YYYY')}**`,
       fields: [],
-      timestamp: new Date(),
-      footer: {
-        text: 'Keep up the great work! 📖'
-      }
+      timestamp: new Date()
     };
 
-    // Sort by completion rate (highest first)
-    const sortedProgress = weeklyProgress.sort((a, b) => b.completionRate - a.completionRate);
+    // If everyone is caught up, send a simple message
+    if (behindUsers.length === 0) {
+      embed.description += '\n\nEveryone is caught up today. Great work.';
+      return { embeds: [embed] };
+    }
 
-    // Get the first user to determine total days and current day
-    const firstUser = sortedProgress[0];
-    const totalDays = firstUser ? firstUser.totalDays : 0;
-    const currentDay = firstUser ? firstUser.currentDay : 0;
-    const daysRunning = currentDay;
+    // Sort behind users by days behind (most behind first)
+    behindUsers.sort((a, b) => b.daysBehind - a.daysBehind);
 
-    sortedProgress.forEach((user, index) => {
-      const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '📊';
-      
-      // Try to get the user's display name from Discord
-      let userDisplay = user.username || `User ${user.userId}`;
-      
-      // Create mention - this should work for Discord mentions
-      const mention = `<@${user.userId}>`;
-      
-      let status = '';
-      if (user.daysBehind === 0) {
-        status = '✅ **On Track!**';
-      } else if (user.daysBehind <= 2) {
-        status = '⚠️ **Slightly Behind**';
-      } else {
-        status = '🚨 **Needs Attention**';
-      }
-
+    // Add users who are behind (2+ days) - no mentions, just username and days behind
+    behindUsers.forEach((user) => {
+      const userDisplay = user.username || `User ${user.userId}`;
       embed.fields.push({
-        name: `${medal} ${userDisplay}`,
-        value: `${mention}\n${status}\n📈 **${user.completionRate}%** complete (${user.completedDays}/${totalDays} days)\n📅 **${user.daysBehind}** days behind`,
-        inline: false
+        name: userDisplay,
+        value: `${user.daysBehind} days behind`,
+        inline: true
       });
     });
 
-    // Add summary field with days running information
+    // Add minimal summary
     const totalUsers = weeklyProgress.length;
-    const onTrackUsers = weeklyProgress.filter(u => u.daysBehind === 0).length;
-    const behindUsers = weeklyProgress.filter(u => u.daysBehind > 0).length;
+    const caughtUpCount = caughtUpUsers.length;
+    const behindCount = behindUsers.length;
 
     embed.fields.push({
-      name: '📊 Weekly Summary',
-      value: `👥 **${totalUsers}** total participants\n✅ **${onTrackUsers}** on track\n⚠️ **${behindUsers}** need to catch up\n📅 **Day ${daysRunning}** of ${totalDays} total days`,
+      name: '📊 Summary',
+      value: `**${totalUsers}** total participants\n✅ **${caughtUpCount}** caught up\n⚠️ **${behindCount}** behind`,
       inline: false
     });
 

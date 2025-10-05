@@ -464,7 +464,8 @@ class SheetsTracker {
       // Convert to leaderboard format
       const leaderboard = Object.values(userCompletions).map(user => {
         const completionRate = totalDays > 0 ? (user.completedDays / totalDays) * 100 : 0;
-        const daysBehind = Math.max(0, currentDay - user.completedDays);
+        // Days behind = total days - days read
+        const daysBehind = Math.max(0, totalDays - user.completedDays);
         
         return {
           userId: user.userId,
@@ -498,7 +499,7 @@ class SheetsTracker {
       const sheetId = this.readingPlanSheetId;
       const sheetName = process.env.READING_PLAN_SHEET_NAME || '2026 Plan';
       
-      // Read the reading plan sheet to get total days
+      // Read the reading plan sheet to get first reading date
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
         range: `${sheetName}!A:E` // Date, Message, Due, Reading, Day
@@ -510,9 +511,20 @@ class SheetsTracker {
         return 7; // Fallback to 7 days
       }
       
-      // Count non-empty rows (excluding header)
-      const totalDays = rows.length - 1;
-      logger.debug(`Total reading days calculated: ${totalDays}`);
+      // Get first reading date (first row after header)
+      const firstReadingDate = rows[1][0]; // First date in column A
+      if (!firstReadingDate) {
+        logger.warn('No first reading date found');
+        return 7; // Fallback to 7 days
+      }
+      
+      // Calculate total days as current date - first reading date
+      const firstDate = new Date(firstReadingDate);
+      const currentDate = new Date();
+      const timeDiff = currentDate.getTime() - firstDate.getTime();
+      const totalDays = Math.max(1, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1); // +1 to include both start and end dates
+      
+      logger.debug(`Total reading days calculated: ${totalDays} (from ${firstReadingDate} to ${currentDate.toISOString().split('T')[0]})`);
       return totalDays;
       
     } catch (error) {
@@ -530,7 +542,7 @@ class SheetsTracker {
       const sheetId = this.readingPlanSheetId;
       const sheetName = process.env.READING_PLAN_SHEET_NAME || '2026 Plan';
       
-      // Read the reading plan sheet to find current day
+      // Read the reading plan sheet to get first reading date
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
         range: `${sheetName}!A:E` // Date, Message, Due, Reading, Day
@@ -542,23 +554,20 @@ class SheetsTracker {
         return 1; // Fallback to day 1
       }
       
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-      
-      // Find today's row or the most recent past row
-      let currentDay = 1;
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        const rowDate = row[0];
-        const dayNumber = parseInt(row[4]) || i; // Use Day column or row index
-        
-        if (rowDate <= today) {
-          currentDay = dayNumber;
-        } else {
-          break; // Stop at first future date
-        }
+      // Get first reading date (first row after header)
+      const firstReadingDate = rows[1][0]; // First date in column A
+      if (!firstReadingDate) {
+        logger.warn('No first reading date found');
+        return 1; // Fallback to day 1
       }
       
-      logger.debug(`Current reading day calculated: ${currentDay}`);
+      // Calculate current day as current date - first reading date + 1
+      const firstDate = new Date(firstReadingDate);
+      const currentDate = new Date();
+      const timeDiff = currentDate.getTime() - firstDate.getTime();
+      const currentDay = Math.max(1, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1); // +1 to include both start and end dates
+      
+      logger.debug(`Current reading day calculated: ${currentDay} (from ${firstReadingDate} to ${currentDate.toISOString().split('T')[0]})`);
       return currentDay;
       
     } catch (error) {
@@ -608,11 +617,17 @@ class SheetsTracker {
     try {
       logger.debug(`Calculating days behind for user ${userId} on ${currentDate}`);
       
-      // For now, return placeholder data
-      // TODO: Implement real calculation based on user's last completion
-      const randomDaysBehind = Math.floor(Math.random() * 5); // 0-4 days behind
+      // Get the user's progress from the leaderboard
+      const leaderboard = await this.getLeaderboard();
+      const user = leaderboard.find(u => u.userId === userId);
       
-      return randomDaysBehind;
+      if (!user) {
+        logger.warn(`User ${userId} not found in leaderboard`);
+        return 0;
+      }
+      
+      // Return the calculated days behind from the leaderboard
+      return user.daysBehind;
     } catch (error) {
       logger.error('Error calculating days behind:', error);
       return 0;
