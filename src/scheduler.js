@@ -92,7 +92,7 @@ class Scheduler {
       }
 
       // Format message with MessageFormatter
-      const formattedMessage = this.messageFormatter.formatDailyReading(readingPlan);
+      const formattedMessage = await this.messageFormatter.formatDailyReading(readingPlan);
       
       // Send the message
       const message = await channel.send(formattedMessage);
