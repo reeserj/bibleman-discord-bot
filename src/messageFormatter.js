@@ -1,4 +1,5 @@
 const logger = require('./utils/logger');
+const AIService = require('./aiService');
 
 class MessageFormatter {
   constructor() {
@@ -9,6 +10,7 @@ class MessageFormatter {
       error: 0xff0000,      // Red
       info: 0x00ffff        // Cyan
     };
+    this.aiService = new AIService();
   }
 
   /**
@@ -16,13 +18,13 @@ class MessageFormatter {
    * @param {Object} readingPlan - The reading plan data
    * @returns {Object} Discord embed object
    */
-  formatDailyReading(readingPlan) {
+  async formatDailyReading(readingPlan) {
     try {
       const embed = {
         color: this.colors.primary,
         title: this.formatTitle(readingPlan),
         description: this.formatDescription(readingPlan),
-        fields: this.formatFields(readingPlan),
+        fields: await this.formatFields(readingPlan),
         timestamp: new Date(),
         footer: {
           text: 'React with ✅ when completed'
@@ -49,28 +51,22 @@ class MessageFormatter {
   }
 
   formatDescription(readingPlan) {
-    let description = readingPlan.message || 'Daily Bible reading assignment';
+    // Calculate progress and day number dynamically
+    const progressInfo = this.calculateProgress(readingPlan);
     
-    // Extract progress percentage if available
-    const progressMatch = description.match(/(\d+\.?\d*%)/);
-    if (progressMatch) {
-      const progress = progressMatch[1];
-      description = description.replace(progress, `**${progress}**`);
-    }
+    // Create a simple description without using due or message columns
+    let description = `**Day ${progressInfo.dayNumber}** (${progressInfo.percentage}% complete)\n📖 Daily Bible Reading Assignment`;
 
     return description;
   }
 
-  formatFields(readingPlan) {
+  async formatFields(readingPlan) {
     const fields = [];
 
     // Consolidate all bonus content and links
     let bonusContent = [];
 
-    // Add bonus text if available
-    if (readingPlan.bonusText && readingPlan.bonusText.trim()) {
-      bonusContent.push(readingPlan.bonusText);
-    }
+    // bonusText column is ignored
 
     // Add Bible Project link if available
     if (readingPlan.bibleProject && readingPlan.bibleProject.trim()) {
@@ -82,9 +78,25 @@ class MessageFormatter {
       bonusContent.push(`⏰ **10 Minute Bible Hour**: ${this.formatLink(readingPlan.tenMinBible, 'Listen Now')}`);
     }
 
-    // Add start of book information if available
-    if (readingPlan.startOfBook && readingPlan.startOfBook.trim()) {
-      bonusContent.push(`📖 **Book Introduction**: ${readingPlan.startOfBook}`);
+    // Generate AI book introduction if we have a reading assignment
+    if (readingPlan.due && readingPlan.due.trim()) {
+      try {
+        const bookName = this.aiService.extractBookName(readingPlan.due);
+        const chapterRange = this.aiService.extractChapterRange(readingPlan.due);
+        
+        if (bookName) {
+          const aiSummary = await this.aiService.generateBookSummary(bookName, chapterRange);
+          if (aiSummary) {
+            bonusContent.push(`📖 **Book Introduction**: ${aiSummary}`);
+          }
+        }
+      } catch (error) {
+        logger.error('Error generating AI book introduction:', error);
+        // Fallback to original startOfBook if AI fails
+        if (readingPlan.startOfBook && readingPlan.startOfBook.trim()) {
+          bonusContent.push(`📖 **Book Introduction**: ${readingPlan.startOfBook}`);
+        }
+      }
     }
 
     // Add additional bonus content if available
@@ -106,6 +118,40 @@ class MessageFormatter {
 
   formatLink(url, text) {
     return `[${text}](${url})`;
+  }
+
+  calculateProgress(readingPlan) {
+    // Use the reading column value to determine progress
+    const readingValue = readingPlan.reading || 0;
+    const dayValue = readingPlan.day || 0;
+    
+    // Calculate percentage based on reading value
+    // Assuming reading values represent chapters or sections completed
+    // You may need to adjust this calculation based on your specific data structure
+    let percentage = 0;
+    let dayNumber = 1;
+    
+    if (readingValue > 0) {
+      // Calculate day number based on reading value
+      // This assumes reading values increment by 1 for each day
+      dayNumber = readingValue;
+      
+      // Calculate percentage - you may need to adjust this based on total expected readings
+      // For now, using a simple calculation - adjust as needed
+      percentage = Math.round((readingValue / 365) * 100 * 100) / 100; // Assuming 365-day plan
+    } else if (dayValue > 0) {
+      // Fallback to day value if reading value is not available
+      dayNumber = dayValue;
+      percentage = Math.round((dayValue / 365) * 100 * 100) / 100;
+    }
+    
+    // Ensure percentage doesn't exceed 100%
+    percentage = Math.min(percentage, 100);
+    
+    return {
+      dayNumber,
+      percentage: percentage.toFixed(1)
+    };
   }
 
   formatErrorEmbed(message) {
