@@ -8,6 +8,7 @@ const SheetsParser = require('./sheetsParser');
 const SheetsTracker = require('./sheetsTracker');
 const MessageFormatter = require('./messageFormatter');
 const GuildConfig = require('./guildConfig');
+const GroupMeService = require('./groupmeService');
 const logger = require('./utils/logger');
 const Helpers = require('./utils/helpers');
 
@@ -38,6 +39,7 @@ class BibleManBot {
     this.sheetsParser = new SheetsParser();
     this.sheetsTracker = new SheetsTracker();
     this.guildConfig = new GuildConfig();
+    this.groupMeService = new GroupMeService();
     this.scheduler = new Scheduler(this.client, this.messageFormatter, this.sheetsParser, this.sheetsTracker, this.guildConfig);
 
     this.setupEventHandlers();
@@ -133,6 +135,11 @@ class BibleManBot {
   }
 
   async handleMessage(message) {
+    // Check if this is a lockerroom channel that should forward to GroupMe
+    if (this.isLockerroomChannel(message.channel)) {
+      await this.handleLockerroomMessage(message);
+    }
+
     const prefix = process.env.BOT_PREFIX || '!';
     
     if (!message.content.startsWith(prefix)) return;
@@ -159,6 +166,10 @@ class BibleManBot {
         
       case 'help':
         await this.handleHelpCommand(message);
+        break;
+        
+      case 'testgroupme':
+        await this.handleTestGroupMeCommand(message);
         break;
         
       default:
@@ -212,17 +223,105 @@ class BibleManBot {
           inline: true
         },
         {
+          name: '!testgroupme',
+          value: 'Test GroupMe integration',
+          inline: true
+        },
+        {
           name: '!help',
           value: 'Show this help message',
           inline: true
         }
       ],
       footer: {
-        text: 'Daily readings are automatically sent at 5 AM CST'
+        text: 'Daily readings are automatically sent at 5 AM CST to Discord and GroupMe'
       }
     };
 
     await message.reply({ embeds: [helpEmbed] });
+  }
+
+  async handleTestGroupMeCommand(message) {
+    try {
+      const success = await this.groupMeService.testConnection();
+      
+      if (success) {
+        await message.reply('✅ GroupMe integration test successful!');
+      } else {
+        await message.reply('❌ GroupMe integration test failed. Check logs for details.');
+      }
+    } catch (error) {
+      logger.error('Error testing GroupMe connection:', error);
+      await message.reply('❌ GroupMe integration test failed. Check logs for details.');
+    }
+  }
+
+  isLockerroomChannel(channel) {
+    // Check if this channel should forward messages to GroupMe lockerroom
+    // You can customize this logic based on channel name, ID, or other criteria
+    const lockerroomChannelNames = ['lockerroom', 'locker-room', 'team-chat', 'general'];
+    const channelName = channel.name.toLowerCase();
+    
+    return lockerroomChannelNames.some(name => channelName.includes(name));
+  }
+
+  async handleLockerroomMessage(message) {
+    try {
+      // Skip bot messages and command messages
+      if (message.author.bot || message.content.startsWith(process.env.BOT_PREFIX || '!')) {
+        return;
+      }
+
+      // Create a formatted message for GroupMe
+      const groupMeMessage = this.formatLockerroomMessageForGroupMe(message);
+      
+      // Send to GroupMe lockerroom
+      const success = await this.groupMeService.sendLockerroomMessage(groupMeMessage);
+      
+      if (success) {
+        logger.info(`Forwarded lockerroom message from ${message.author.tag} to GroupMe`);
+      } else {
+        logger.warn(`Failed to forward lockerroom message from ${message.author.tag} to GroupMe`);
+      }
+    } catch (error) {
+      logger.error('Error handling lockerroom message:', error);
+    }
+  }
+
+  formatLockerroomMessageForGroupMe(message) {
+    const author = message.author;
+    const content = message.content;
+    const channel = message.channel;
+    const guild = message.guild;
+    
+    // Format the message for GroupMe
+    let groupMeMessage = `*${author.displayName || author.username}* (Discord - ${guild.name}):\n`;
+    groupMeMessage += content;
+    
+    // Add channel context if not in general channel
+    if (channel.name !== 'general' && channel.name !== 'lockerroom') {
+      groupMeMessage += `\n_#${channel.name}_`;
+    }
+    
+    // Handle attachments
+    if (message.attachments.size > 0) {
+      groupMeMessage += '\n\n📎 *Attachment(s):*';
+      message.attachments.forEach(attachment => {
+        groupMeMessage += `\n${attachment.url}`;
+      });
+    }
+    
+    // Handle embeds
+    if (message.embeds.length > 0) {
+      groupMeMessage += '\n\n🔗 *Embed(s):*';
+      message.embeds.forEach(embed => {
+        if (embed.title) groupMeMessage += `\n${embed.title}`;
+        if (embed.description) groupMeMessage += `\n${embed.description}`;
+        if (embed.url) groupMeMessage += `\n${embed.url}`;
+      });
+    }
+    
+    return groupMeMessage;
   }
 
   async handleGuildJoin(guild) {
@@ -371,13 +470,33 @@ class BibleManBot {
         }
       }
       
+      // Ensure bot user is available
+      if (!this.client.user) {
+        logger.warn('Bot user not available yet, skipping reaction tracking');
+        return;
+      }
+      
       // Check if this is a reading completion message from our bot
       if (message.author && message.author.id === this.client.user.id) {
-        logger.info('Reaction is on a bot message, tracking it');
-        await this.sheetsTracker.trackReaction(reaction, user, action);
-        logger.info(`User ${user.tag} ${action}ed reaction to reading message`);
+        // Additional check: only track reactions on daily reading messages
+        // Daily reading messages have embeds with "React with ✅ when completed" in footer
+        const isDailyReadingMessage = message.embeds && 
+          message.embeds.length > 0 && 
+          message.embeds[0].footer && 
+          message.embeds[0].footer.text && 
+          message.embeds[0].footer.text.includes('React with ✅ when completed');
+        
+        if (isDailyReadingMessage) {
+          logger.info(`Reaction is on a daily reading message (author: ${message.author.tag}, bot: ${this.client.user.tag}), tracking it`);
+          await this.sheetsTracker.trackReaction(reaction, user, action);
+          logger.info(`User ${user.tag} ${action}ed reaction to reading message`);
+        } else {
+          logger.info(`Reaction is on a bot message but not a daily reading message, ignoring`);
+        }
       } else {
-        logger.info('Reaction is not on a bot message, ignoring');
+        const authorTag = message.author ? message.author.tag : 'Unknown';
+        const botTag = this.client.user ? this.client.user.tag : 'Unknown';
+        logger.info(`Reaction is not on a bot message (author: ${authorTag}, bot: ${botTag}), ignoring`);
       }
     } catch (error) {
       logger.error('Error in handleReaction:', error);
