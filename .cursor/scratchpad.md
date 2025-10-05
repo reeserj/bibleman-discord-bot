@@ -264,139 +264,85 @@ The user wants to create a Discord bot that helps track Bible reading progress. 
 
 ## Executor's Feedback or Assistance Requests
 
-**Channel Selection Feature Completed! ✅**
+**STANDALONE DISCORD BOT APP UPDATED** ✅
 
-**What's Been Implemented:**
+**What's Been Updated:**
 
-1. **Text-Based Channel Selector:**
-   - Created `channel-selector.js` with interactive CLI interface
-   - Lists all accessible Discord channels with numerical selection
-   - Shows current channel selection and allows changes
-   - Validates channel permissions before saving
+1. **AI Service Integration:**
+   - Added `src/aiService.js` with Venice AI integration for dynamic book summaries
+   - Integrated OpenAI client with Venice AI endpoint configuration
+   - Implemented book name and chapter range extraction from reading assignments
+   - Added AI-generated summaries optimized for high school boys with practical life application focus
+   - Included fallback to original startOfBook content if AI service fails
 
-2. **Desktop App Integration:**
-   - Added `select-channel.sh` script for easy channel selection
-   - Updated `start-bot.sh` to include channel selection option
-   - Added new command: `./start-bot.sh channel`
-   - Integrated into existing bot management workflow
+2. **Enhanced Message Formatting:**
+   - Updated `src/messageFormatter.js` with AI integration and improved progress calculation
+   - Added async `formatDailyReading` method for AI content generation
+   - Implemented `calculateProgress` method for dynamic day and percentage calculation
+   - Removed dependency on message column, now uses reading/day values instead
+   - Improved bonus content consolidation and formatting
 
-3. **Bot Channel Logic Updates:**
-   - Enhanced `scheduler.js` with dynamic channel validation
-   - Added channel change detection and caching
-   - Improved error handling for channel access issues
-   - Added channel information commands to bot
+3. **Scheduler Updates:**
+   - Updated `src/scheduler.js` to support async message formatting
+   - Changed `formatDailyReading` call to await for AI integration
+   - Maintained backward compatibility with existing message structure
 
-4. **Configuration Persistence:**
-   - Channel selection automatically saves to `.env` file
-   - Updates `DISCORD_CHANNEL_ID` and `DISCORD_GUILD_ID`
-   - Adds timestamp for channel selection tracking
+4. **New Bot Management Scripts:**
+   - Added `start-bot.sh` for easy bot startup with comprehensive checks
+   - Added `BOT_SCRIPTS_README.md` with detailed usage instructions
+   - Support for Node.js validation, dependency installation, and environment checking
+   - Colored output and error handling for better user experience
 
-**How to Use:**
-1. Run `./start-bot.sh channel` to select a channel
-2. Or run `./select-channel.sh` directly
-3. Follow the interactive prompts to select a channel
-4. Restart the bot to use the new channel selection
+5. **Systemd Service Management:**
+   - Added `run-bot-service.sh` for background service management (start/stop/restart/status/logs)
+   - Added `install-service.sh` for systemd service installation
+   - Added `bibleman-bot.service` systemd service configuration
+   - Added `setup-alias.sh` for convenient command aliases
+   - Support for production deployment with proper logging and process management
 
-**Current Status:**
-- Channel selection feature is fully implemented
-- Ready for testing with actual Discord server
-- Bot will validate channel access before sending messages
-- All channel changes are persisted to configuration
+6. **Dependencies and Configuration:**
+   - Updated `package.json` with OpenAI dependency for Venice AI API integration
+   - Updated `env.example` with VENICE_API_KEY configuration
+   - All changes committed to git with proper commit messages
 
-**Next Steps:**
-1. Test the channel selection with a real Discord server
-2. Verify that bot messages are sent to the selected channel
-3. Test channel validation and error handling
+**How to Use the Updated Bot:**
 
-**What's Been Fixed:**
-
-1. **User Tagging Issue Fixed:**
-   - Updated leaderboard to properly display usernames instead of just user IDs
-   - Added proper Discord mention formatting (`<@userId>`)
-   - Now shows both username and mention for better user experience
-
-2. **Days Behind Calculation Fixed:**
-   - Replaced hardcoded 7-day assumption with real reading plan data
-   - Added `getTotalReadingDays()` method to calculate actual total days from the reading plan sheet
-   - Added `getCurrentReadingDay()` method to determine current day based on actual dates
-   - Days behind now calculated as: `currentDay - completedDays` instead of `totalDays - completedDays`
-
-3. **Days Running Calculation Added:**
-   - Leaderboard now shows "Day X of Y total days" in the summary
-   - Calculates current day based on today's date vs reading plan dates
-   - Uses the "Day" column from the reading plan sheet for accurate day numbering
-
-4. **Real Data Integration:**
-   - Updated `getWeeklyProgress()` to use real data from SheetsTracker instead of fallback data
-   - Leaderboard now pulls actual user completion data from Google Sheets
-   - Proper error handling with fallback data only when real data fails
-
-**Technical Implementation:**
-- Added new methods in `sheetsTracker.js`: `getTotalReadingDays()` and `getCurrentReadingDay()`
-- Updated `getLeaderboard()` to use real calculations instead of hardcoded values
-- Enhanced `formatWeeklyLeaderboard()` in `scheduler.js` with better user display and days running info
-- Improved error handling and logging throughout
-
-**Current Status:**
-- Bot is running with updated leaderboard functionality
-- Ready to test the improved leaderboard with real data
-- All calculations now based on actual reading plan data from Google Sheets
-
-**Next Steps:**
-1. Test the leaderboard by using the `/leaderboard` command in Discord
-2. Verify that user mentions work properly
-3. Confirm that days behind calculation is accurate
-4. Check that days running information is correct
-
-**Ready for Testing**: The leaderboard should now properly tag users and show accurate progress calculations based on the actual reading plan data.
-
-**STANDALONE APP FEATURES REMOVED** ✅
-
-**What Was Removed:**
-1. **Desktop Application Files:**
-   - `bibleman.desktop` - Desktop application launcher
-   - `install-desktop-app.sh` - Desktop app installer script
-   - `create-icon.sh` - Icon creation script
-   - `DESKTOP_APP_README.md` - Desktop app documentation
-
-2. **Startup and Management Scripts:**
-   - `start-bot.sh` - Main startup script with full functionality
-   - `select-channel.sh` - Channel selection script
-
-3. **Channel Selection Functionality:**
-   - `channel-selector.js` - Interactive channel selector
-   - All GUI-based channel selection features
-
-4. **Icon Files:**
-   - `icons/` directory and all contents
-   - `bibleman.png`, `bibleman.svg`, `bibleman.txt`
-   - `create-simple-icon.py`
-
-**What Remains:**
-- Core Discord bot functionality (`src/bot.js`, `src/scheduler.js`, etc.)
-- Google Sheets integration (`src/sheetsParser.js`, `src/sheetsTracker.js`)
-- Message formatting (`src/messageFormatter.js`)
-- Configuration through `.env` file
-- Setup scripts (`setup.js`, `update-env.sh`, `fix-discord-setup.js`)
-
-**How to Run the Bot Now:**
+**For Development/Testing:**
 ```bash
-# Install dependencies
-npm install
+# Make sure you have the VENICE_API_KEY in your .env file
+# Start the bot with comprehensive checks
+./start-bot.sh
+```
 
-# Configure environment
-cp env.example .env
-# Edit .env with your Discord token and settings
+**For Production/Service:**
+```bash
+# Install as systemd service
+./install-service.sh
 
-# Start the bot
-node src/bot.js
+# Start the service
+./run-bot-service.sh start
+
+# Check status
+./run-bot-service.sh status
+
+# View logs
+./run-bot-service.sh logs
 ```
 
 **Current Status:**
-- All standalone desktop app features have been successfully removed
-- Bot now runs as a standard Node.js application
-- Configuration is managed through environment variables
-- No GUI or desktop integration remains
+- All recent changes have been committed to git
+- Bot now supports AI-generated book summaries for daily readings
+- Enhanced message formatting with dynamic progress calculation
+- Production-ready with systemd service management
+- Standalone operation without Cursor dependency
+
+**Next Steps:**
+1. Test the AI integration with actual Discord server
+2. Verify AI-generated book summaries are working properly
+3. Test the new bot management scripts
+4. Consider installing as systemd service for production use
+
+**Ready for Production**: The standalone Discord bot app has been successfully updated with all recent changes and is ready for deployment.
 
 ## Technical Specifications
 
