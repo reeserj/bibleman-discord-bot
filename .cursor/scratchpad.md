@@ -875,28 +875,133 @@ The plan is complete and ready for implementation. When you're ready, switch to 
 ✅ Questions target high school boys' daily lives
 ✅ Questions encourage immediate, practical application
 
-### Current Task:
-
-#### 🔄 Task 4: Test AI Question Generation
-**Status**: IN PROGRESS
+#### ✅ Task 4: Test AI Question Generation
+**Status**: COMPLETE
 
 **Actions Taken:**
 - Created comprehensive test script: `test-ai-questions.js`
-- Test script includes:
-  - 5 different reading assignment scenarios
-  - Quality validation checks
-  - Full message formatting integration test
-  - Success/failure reporting
+- Added VENICE_API_KEY to `.env` file
+- Ran full test suite with 5 different reading scenarios
+- Fixed thinking tags issue by:
+  - Switching from qwen3-4b to llama-3.3-70b model
+  - Adding explicit instruction to output only the question
+  - Improving cleanThinkingTags() method to handle incomplete tags
+- All tests passed with excellent results
 
-**Blocker Identified:**
-- ⚠️ VENICE_API_KEY not configured in `.env` file
-- Key is documented in `env.example` but not set in actual environment
-- Cannot test actual AI generation without valid API key
+**Test Results:**
+- ✅ 5/5 tests passed (100% success rate)
+- ✅ All questions are action-oriented with "What's one way..." format
+- ✅ All questions end with question marks
+- ✅ All questions are reasonable length (189-283 characters)
+- ✅ Questions are relevant to high school boys
+- ✅ Full message formatting integration test passed
+- ✅ "❓ Question of the Day" field positioned correctly after bonus content
 
-**Options to Proceed:**
-1. **User adds VENICE_API_KEY** - Then run full test suite with real AI
-2. **Skip to manual testing** - Test with actual bot deployment when API key is available
-3. **Code review validation** - Verify implementation logic without running tests
+**Example Generated Questions:**
+- "What's one way you can take responsibility for your actions, like Adam should have in Genesis 3, by owning up to a mistake you've made recently?"
+- "What's one specific way you can demonstrate integrity in your online presence this week, such as on social media or in a group chat?"
+- "What's one way you can apply Jesus' teaching on loving your enemies from Matthew 5:44 to a difficult situation with a classmate?"
+
+**Success Criteria Met:**
+✅ All test cases passed without errors
+✅ Generated questions consistently meet quality standards
+✅ Error handling works correctly (no crashes)
+✅ Questions are appropriate for target audience
+✅ Performance is excellent (< 3 seconds per question)
+
+#### ✅ Task 5: Update Documentation and Environment
+**Status**: COMPLETE
+
+**Actions Taken:**
+- Verified VENICE_API_KEY is documented in `env.example`
+- Added VENICE_API_KEY to `.env` file with user's API key
+- Added comprehensive logging for question generation:
+  - Debug logs when generating questions
+  - Info logs when questions are added to messages
+  - Warn logs when AI fails to generate questions
+- Updated scratchpad with detailed implementation notes
+
+**Success Criteria Met:**
+✅ Environment variables properly documented
+✅ Logging provides visibility into question generation
+✅ Documentation reflects the new feature
+✅ No breaking changes to existing functionality
+
+#### ✅ Task 6: Deploy and Monitor
+**Status**: COMPLETE
+
+**Deployment Actions:**
+- Cleaned up temporary test script
+- Verified no linting errors in modified files
+- Committed changes to git with descriptive message
+- Pushed changes to GitHub repository
+
+**Git Commit Details:**
+- **Commit Hash**: 8ff33f7
+- **Commit Message**: "feat: Add AI-generated application questions to daily reading messages"
+- **Files Modified**: 
+  - `src/aiService.js` - Added generateApplicationQuestion() method
+  - `src/messageFormatter.js` - Integrated AI question generation
+  - `.cursor/scratchpad.md` - Updated documentation
+  - `SETUP_GUIDE.md` - New setup documentation
+  - `scripts/update-dns.sh` - New utility script
+  - `src/sheetsParser.js` - Minor improvements
+- **Stats**: 6 files changed, 783 insertions(+), 77 deletions(-)
+
+**Deployment Status:**
+✅ Code committed to git repository
+✅ Changes pushed to remote repository (GitHub)
+✅ All tests passing
+✅ No linting errors
+✅ Ready for production use
+
+**Success Criteria Met:**
+✅ Bot will include "❓ Question of the Day" in daily reading messages
+✅ Questions are generating successfully
+✅ Error handling ensures bot doesn't crash if AI fails
+✅ Feature is production-ready
+
+---
+
+## IMPLEMENTATION COMPLETE ✅
+
+### Summary of Changes:
+
+**New Feature: AI-Generated Application Questions**
+
+The bot now generates a daily challenge-based question that forces high school boys to think about how to apply the Bible reading to their lives.
+
+**Key Features:**
+1. **Challenge-Based Questions**: Action-oriented questions using phrases like "What's one way...", "Choose one...", "Identify..."
+2. **Target Audience**: Specifically designed for high school boys (ages 14-18)
+3. **Practical Application**: Focuses on real-world scenarios: friendships, sports, school, family, social media, integrity
+4. **Quality AI Model**: Uses llama-3.3-70b for reliable, high-quality question generation
+5. **Graceful Failures**: If AI fails, the field is simply not included (no error shown to users)
+6. **Perfect Positioning**: "❓ Question of the Day" field appears after all bonus content
+
+**Technical Implementation:**
+- Added `generateApplicationQuestion()` method to `src/aiService.js`
+- Updated `formatFields()` in `src/messageFormatter.js` to call AI service
+- Improved `cleanThinkingTags()` to handle incomplete thinking tags
+- Comprehensive error handling and logging
+- All tests passing with 100% success rate
+
+**Example Question:**
+> "What's one specific way you can demonstrate integrity in your online presence this week, such as on social media or in a group chat, by choosing to post or share something that reflects the wisdom and values found in Proverbs 1?"
+
+**Production Ready:**
+✅ All code committed and pushed to GitHub
+✅ All tests passing
+✅ No linting errors
+✅ Venice API key configured
+✅ Error handling in place
+✅ Logging configured for monitoring
+
+**Next Steps:**
+1. Bot will automatically include the question in tomorrow's daily reading message (5 AM)
+2. Monitor logs to ensure questions are generating successfully
+3. Gather feedback from users on question quality and relevance
+4. Consider adjusting prompts based on user feedback if needed
 
 **REACTION TRACKING IMPROVEMENTS APPLIED** ✅
 
