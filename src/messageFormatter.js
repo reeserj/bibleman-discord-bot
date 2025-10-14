@@ -51,66 +51,82 @@ class MessageFormatter {
   }
 
   formatDescription(readingPlan) {
-    // Calculate progress and day number dynamically
-    const progressInfo = this.calculateProgress(readingPlan);
+    // Get day number from Day column
+    const dayNumber = readingPlan.day || 1;
     
-    // Create a simple description without using due or message columns
-    let description = `**Day ${progressInfo.dayNumber}** (${progressInfo.percentage}% complete)\n📖 Daily Bible Reading Assignment`;
+    // Calculate progress percentage
+    const percentage = this.calculateProgressPercentage(readingPlan);
+    
+    // Create a description with the reading assignment from Reading column
+    let description = `**Day ${dayNumber}** (${percentage}% complete)\n`;
+    
+    // Get reading assignment from Reading column
+    if (readingPlan.reading && readingPlan.reading.trim()) {
+      description += `📖 **${readingPlan.reading}**`;
+    } else {
+      description += `📖 Daily Bible Reading Assignment`;
+    }
 
     return description;
+  }
+
+  calculateProgressPercentage(readingPlan) {
+    // Use the day number to calculate percentage (assuming 365-day plan)
+    const dayNumber = readingPlan.day || 0;
+    const percentage = Math.round((dayNumber / 365) * 100 * 100) / 100;
+    return Math.min(percentage, 100).toFixed(1);
   }
 
   async formatFields(readingPlan) {
     const fields = [];
 
-    // Consolidate all bonus content and links
-    let bonusContent = [];
-
-    // bonusText column is ignored
-
-    // Add Bible Project link if available
-    if (readingPlan.bibleProject && readingPlan.bibleProject.trim()) {
-      bonusContent.push(`🎥 **Bible Project Video**: ${this.formatLink(readingPlan.bibleProject, 'Watch Video')}`);
-    }
+    // Collect links from the three columns
+    let links = [];
 
     // Add 10 Minute Bible Hour link if available
     if (readingPlan.tenMinBible && readingPlan.tenMinBible.trim()) {
-      bonusContent.push(`⏰ **10 Minute Bible Hour**: ${this.formatLink(readingPlan.tenMinBible, 'Listen Now')}`);
+      links.push(readingPlan.tenMinBible);
     }
 
-    // Generate AI book introduction if we have a reading assignment
-    if (readingPlan.due && readingPlan.due.trim()) {
-      try {
-        const bookName = this.aiService.extractBookName(readingPlan.due);
-        const chapterRange = this.aiService.extractChapterRange(readingPlan.due);
-        
-        if (bookName) {
-          const aiSummary = await this.aiService.generateBookSummary(bookName, chapterRange);
-          if (aiSummary) {
-            bonusContent.push(`📖 **Book Introduction**: ${aiSummary}`);
-          }
-        }
-      } catch (error) {
-        logger.error('Error generating AI book introduction:', error);
-        // Fallback to original startOfBook if AI fails
-        if (readingPlan.startOfBook && readingPlan.startOfBook.trim()) {
-          bonusContent.push(`📖 **Book Introduction**: ${readingPlan.startOfBook}`);
-        }
-      }
+    // Add Bible Project link if available
+    if (readingPlan.bibleProject && readingPlan.bibleProject.trim()) {
+      links.push(readingPlan.bibleProject);
     }
 
-    // Add additional bonus content if available
+    // Add Bonus link if available
     if (readingPlan.bonus && readingPlan.bonus.trim()) {
-      bonusContent.push(readingPlan.bonus);
+      links.push(readingPlan.bonus);
     }
 
-    // Only add bonus content field if there's content
-    if (bonusContent.length > 0) {
+    // Only add bonus content field if there are links
+    if (links.length > 0) {
       fields.push({
         name: '🎁 Bonus Content & Resources',
-        value: bonusContent.join('\n'),
+        value: links.join('\n'),
         inline: false
       });
+    }
+
+    // Generate AI application question (positioned after bonus content)
+    try {
+      if (readingPlan.reading && readingPlan.reading.trim()) {
+        logger.debug('Generating AI application question...');
+        const question = await this.aiService.generateApplicationQuestion(readingPlan.reading);
+        
+        if (question) {
+          fields.push({
+            name: '❓ Question of the Day',
+            value: question,
+            inline: false
+          });
+          logger.info('AI application question added to message');
+        } else {
+          logger.debug('No AI question generated, skipping field');
+        }
+      }
+    } catch (error) {
+      // Gracefully handle AI failures - just skip the question field
+      logger.warn('Failed to generate AI application question, skipping field:', error.message);
     }
 
     return fields;
@@ -118,40 +134,6 @@ class MessageFormatter {
 
   formatLink(url, text) {
     return `[${text}](${url})`;
-  }
-
-  calculateProgress(readingPlan) {
-    // Use the reading column value to determine progress
-    const readingValue = readingPlan.reading || 0;
-    const dayValue = readingPlan.day || 0;
-    
-    // Calculate percentage based on reading value
-    // Assuming reading values represent chapters or sections completed
-    // You may need to adjust this calculation based on your specific data structure
-    let percentage = 0;
-    let dayNumber = 1;
-    
-    if (readingValue > 0) {
-      // Calculate day number based on reading value
-      // This assumes reading values increment by 1 for each day
-      dayNumber = readingValue;
-      
-      // Calculate percentage - you may need to adjust this based on total expected readings
-      // For now, using a simple calculation - adjust as needed
-      percentage = Math.round((readingValue / 365) * 100 * 100) / 100; // Assuming 365-day plan
-    } else if (dayValue > 0) {
-      // Fallback to day value if reading value is not available
-      dayNumber = dayValue;
-      percentage = Math.round((dayValue / 365) * 100 * 100) / 100;
-    }
-    
-    // Ensure percentage doesn't exceed 100%
-    percentage = Math.min(percentage, 100);
-    
-    return {
-      dayNumber,
-      percentage: percentage.toFixed(1)
-    };
   }
 
   formatErrorEmbed(message) {

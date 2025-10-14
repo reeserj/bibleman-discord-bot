@@ -89,8 +89,8 @@ class SheetsParser {
       date: row[0] || '',
       message: row[1] || '',
       due: row[2] || '',
-      reading: parseInt(row[3]) || 0,
-      day: parseInt(row[4]) || 0,
+      reading: row[3] || '',  // Reading assignment text (e.g., "Genesis 1-3; Proverbs 1")
+      day: parseInt(row[4]) || 0,  // Day number
       bonusText: row[5] || '',
       startOfBook: row[7] || '',
       tenMinBible: row[8] || '',
