@@ -1003,6 +1003,789 @@ The bot now generates a daily challenge-based question that forces high school b
 3. Gather feedback from users on question quality and relevance
 4. Consider adjusting prompts based on user feedback if needed
 
+---
+
+## NEW REQUEST: SEPARATE GROUPME BOT 📱
+
+**User Requirement:**
+Create a separate standalone bot for GroupMe channels that runs independently from the Discord bot.
+
+### Current State Analysis
+
+**Existing GroupMe Integration (in Discord Bot):**
+
+The current codebase has GroupMe functionality embedded within the Discord bot:
+
+1. **GroupMe Service** (`src/groupmeService.js` - 367 lines)
+   - Sends messages to 2 GroupMe groups: Bible Plan and Lockerroom
+   - Formats daily reading messages for GroupMe
+   - Formats weekly leaderboard messages for GroupMe
+   - Handles message conversion (Discord → GroupMe format)
+   - Uses GroupMe REST API (POST to `https://api.groupme.com/v3/bots/post`)
+
+2. **Webhook Server** (`src/webhookServer.js` - 99 lines)
+   - Express.js server running on port 3000
+   - Receives incoming GroupMe webhooks
+   - Forwards GroupMe messages to Discord channels
+   - Health check endpoint
+
+3. **Bot Integration** (`src/bot.js`)
+   - Handles incoming GroupMe messages (via webhook)
+   - Forwards Discord messages from "lockerroom" channels to GroupMe
+   - Maps GroupMe groups to Discord channels
+   - Test command: `!testgroupme`
+
+4. **Scheduler Integration** (`src/scheduler.js`)
+   - Sends daily readings to GroupMe (5 AM)
+   - Sends weekly leaderboards to GroupMe (Sunday 9 AM)
+   - Runs after Discord message is sent
+   - GroupMe failures don't affect Discord
+
+**Environment Variables Used:**
+- `GROUPME_BIBLE_PLAN_BOT_ID` - Bot ID for Bible Plan group
+- `GROUPME_LOCKERROOM_BOT_ID` - Bot ID for Lockerroom group
+- `GROUPME_BIBLE_PLAN_GROUP_ID` - Group ID for Bible Plan
+- `GROUPME_LOCKERROOM_GROUP_ID` - Group ID for Lockerroom
+- `ENABLE_WEBHOOK_SERVER` - Enable/disable webhook server
+- `WEBHOOK_PORT` - Port for webhook server (default: 3000)
+
+**Dependencies:**
+- axios - For GroupMe API calls
+- express - For webhook server
+- Shared: SheetsParser, SheetsTracker, MessageFormatter, AIService, Logger
+
+### Architecture Decision: Two Approaches
+
+#### **Approach 1: Fully Separate Bot (Recommended)**
+- ✅ Complete independence - can deploy/restart separately
+- ✅ No shared runtime dependencies
+- ✅ Clear separation of concerns
+- ✅ Easier to scale independently
+- ⚠️ Requires code duplication (shared utilities)
+- ⚠️ Need to coordinate Google Sheets access
+
+**Structure:**
+```
+Bibleman/                           # Discord Bot
+├── src/
+│   ├── bot.js                      # Discord bot only
+│   ├── scheduler.js                # Discord scheduling only
+│   └── ...
+├── package.json
+└── .env
+
+bibleman-groupme/                   # Separate GroupMe Bot
+├── src/
+│   ├── bot.js                      # GroupMe bot main
+│   ├── scheduler.js                # GroupMe scheduling
+│   ├── groupmeService.js           # Copied from original
+│   ├── webhookServer.js            # Copied from original
+│   └── utils/                      # Copied utilities
+├── package.json
+└── .env
+```
+
+#### **Approach 2: Shared Codebase with Separate Processes**
+- ✅ No code duplication
+- ✅ Shared utilities and dependencies
+- ✅ Easier to maintain consistency
+- ⚠️ Still coupled in repository
+- ⚠️ Risk of accidentally affecting both bots
+
+**Structure:**
+```
+Bibleman/
+├── src/
+│   ├── discord/
+│   │   └── bot.js                  # Discord bot entry point
+│   ├── groupme/
+│   │   └── bot.js                  # GroupMe bot entry point
+│   ├── shared/
+│   │   ├── sheetsParser.js
+│   │   ├── aiService.js
+│   │   └── utils/
+│   └── ...
+├── package.json
+├── discord.env
+├── groupme.env
+├── start-discord.js
+└── start-groupme.js
+```
+
+### Recommended Approach: **Approach 1 - Fully Separate Bot**
+
+**Rationale:**
+- Complete operational independence
+- Can use different Node.js versions if needed
+- Simpler deployment (separate git repos if desired)
+- Clearer ownership and responsibilities
+- Better for long-term maintainability
+
+### Key Questions for Clarification
+
+Before creating the detailed implementation plan, I need your input on:
+
+1. **Repository Structure:**
+   - Create a new separate directory `bibleman-groupme/` within the same repo?
+   - Create a completely separate Git repository?
+   - **Recommendation**: Same repo, separate directory for now (easier to migrate later)
+
+2. **Shared Components:**
+   - Should both bots read from the same Google Sheets?
+   - Should both bots use the same AI service for questions?
+   - Should both bots track reactions in the same PROGRESS sheet?
+   - **Recommendation**: Yes to all (same data source, consistent experience)
+
+3. **Features to Include:**
+   - Daily readings with AI questions? (Currently done)
+   - Weekly leaderboards? (Currently done)
+   - Receive incoming GroupMe messages and forward to Discord?
+   - Receive Discord messages and forward to GroupMe?
+   - **Recommendation**: Include all existing features
+
+4. **Webhook Handling:**
+   - GroupMe bot should run its own webhook server on a different port?
+   - Or disable webhook entirely and only send messages (one-way)?
+   - **Recommendation**: Own webhook server on port 3001
+
+5. **Service Management:**
+   - Create separate systemd service for GroupMe bot?
+   - Use similar scripts (start-groupme-bot.sh, run-groupme-service.sh)?
+   - **Recommendation**: Yes, mirror Discord bot's service structure
+
+6. **Logging:**
+   - Separate logs directory (`logs-groupme/`)?
+   - Or shared logs with different prefixes?
+   - **Recommendation**: Separate directory for clarity
+
+7. **Reaction Tracking:**
+   - Can GroupMe reactions be tracked like Discord?
+   - Or rely on manual updates/Discord tracking only?
+   - **Note**: GroupMe doesn't have reactions like Discord - would need emoji responses or alternative
+
+8. **GroupMe Groups to Support:**
+   - Bible Plan group only?
+   - Lockerroom group only?
+   - Both groups?
+   - **Recommendation**: Both groups (configurable)
+
+---
+
+## USER REQUIREMENTS CONFIRMED ✅
+
+1. ✅ **Repository Structure**: New separate Git repository `bibleman-groupme-bot`
+2. ✅ **Shared Components**: Use same Google Sheets, AI service, and progress tracking
+3. ✅ **Features**: Same features (daily readings with AI questions, weekly leaderboards)
+4. ✅ **Message Flow**: One-way GroupMe only (no forwarding to Discord)
+5. ✅ **Webhook**: Yes, to receive "read" responses from users (port 3001)
+6. ✅ **Service Management**: Separate systemd service with similar management scripts
+7. ✅ **Logging**: Separate logs directory (`logs/` in new repo)
+8. ✅ **Reaction Tracking**: Allow users to reply "read" or "✅" to track completion in PROGRESS sheet
+9. ✅ **Groups**: Bible Plan group only (simplified, single group)
+
+**Clarification:**
+- Bot sends messages TO GroupMe ✅
+- Bot receives "read" responses FROM GroupMe users ✅
+- Bot updates Google Sheets PROGRESS tracking ✅
+- Bot does NOT forward GroupMe messages to Discord ❌
+- Bot does NOT receive Discord messages ❌
+
+---
+
+## High-level Task Breakdown: Separate GroupMe Bot
+
+### Phase 1: Repository and Project Setup
+
+#### Task 1.1: Create New Git Repository
+**Goal**: Set up a new standalone repository for the GroupMe bot
+
+**Actions:**
+1. Create new directory at `/home/reese/.cursor/bibleman-groupme-bot/`
+2. Initialize new Git repository
+3. Create `.gitignore` file (copy from Discord bot, adjust as needed)
+4. Create `README.md` with project overview
+5. Create initial project structure:
+   ```
+   bibleman-groupme-bot/
+   ├── src/
+   │   ├── bot.js                    # Main bot entry point
+   │   ├── scheduler.js              # Scheduling for daily/weekly messages
+   │   ├── groupmeService.js         # GroupMe API integration
+   │   ├── webhookServer.js          # Webhook receiver for "read" responses
+   │   ├── responseTracker.js        # Track "read" responses in Sheets
+   │   ├── aiService.js              # AI question generation (copied)
+   │   ├── sheetsParser.js           # Google Sheets reading (copied)
+   │   ├── sheetsTracker.js          # Google Sheets tracking (copied)
+   │   ├── messageFormatter.js       # GroupMe message formatting
+   │   └── utils/
+   │       ├── logger.js             # Logging utility (copied)
+   │       └── helpers.js            # Helper functions (copied)
+   ├── data/
+   │   └── credentials.json          # Google Sheets credentials (symlink or copy)
+   ├── logs/                         # Log files
+   ├── .env                          # Environment variables
+   ├── env.example                   # Example environment file
+   ├── package.json                  # Dependencies
+   ├── start-bot.sh                  # Start script
+   ├── run-bot-service.sh            # Service management script
+   ├── install-service.sh            # Systemd installation script
+   ├── groupme-bot.service           # Systemd service file
+   └── README.md                     # Documentation
+   ```
+
+**Success Criteria:**
+- New Git repository initialized
+- Project structure created
+- README.md documents the GroupMe bot purpose
+- .gitignore properly configured
+- Ready to add code
+
+#### Task 1.2: Create package.json and Install Dependencies
+**Goal**: Set up Node.js project with required dependencies
+
+**Dependencies:**
+- `axios` - GroupMe API calls
+- `express` - Webhook server
+- `node-cron` - Scheduling
+- `moment-timezone` - Timezone handling
+- `googleapis` - Google Sheets API
+- `openai` - Venice AI (for question generation)
+- `dotenv` - Environment variables
+- `winston` (optional) - Better logging
+
+**Success Criteria:**
+- package.json created with correct dependencies
+- npm install runs successfully
+- package-lock.json generated
+
+#### Task 1.3: Create Environment Configuration
+**Goal**: Set up environment variables for GroupMe bot
+
+**Environment Variables:**
+```env
+# GroupMe Configuration
+GROUPME_BOT_ID=your_groupme_bot_id_here
+GROUPME_GROUP_ID=your_groupme_group_id_here
+GROUPME_ACCESS_TOKEN=your_groupme_access_token_here (if needed)
+
+# Google Sheets Configuration
+GOOGLE_SHEETS_CREDENTIALS=./data/credentials.json
+READING_PLAN_SHEET_ID=1fqg_0b8BiIF_AHS5VR7rT2Xi3FxR6_5u7wuWw_qtOls
+READING_PLAN_SHEET_NAME=2026 Plan
+PROGRESS_TRACKING_SHEET_ID=your_progress_sheet_id_here
+
+# Venice AI Configuration
+VENICE_API_KEY=your_venice_api_key_here
+
+# Webhook Server Configuration
+WEBHOOK_PORT=3001
+WEBHOOK_HOST=0.0.0.0
+
+# Bot Configuration
+TIMEZONE=America/Chicago
+SCHEDULE_TIME=0 5 * * *  # 5 AM CST daily
+WEEKLY_SCHEDULE_TIME=0 9 * * 0  # 9 AM CST every Sunday
+
+# Logging
+LOG_LEVEL=info
+```
+
+**Success Criteria:**
+- `.env` file created with user's values
+- `env.example` template created
+- Environment variables properly documented
+
+### Phase 2: Core GroupMe Bot Implementation
+
+#### Task 2.1: Copy and Adapt Shared Utilities
+**Goal**: Copy utility files from Discord bot and adapt for GroupMe
+
+**Files to Copy:**
+- `src/utils/logger.js` - No changes needed
+- `src/utils/helpers.js` - No changes needed
+- `src/aiService.js` - No changes needed (already generates questions)
+- `src/sheetsParser.js` - No changes needed (reads reading plans)
+- `src/sheetsTracker.js` - May need adaptation for GroupMe user tracking
+
+**Success Criteria:**
+- All utility files copied
+- Files work independently (no Discord.js dependencies)
+- Tests confirm utilities work correctly
+
+#### Task 2.2: Implement GroupMeService
+**Goal**: Create service to send messages to GroupMe
+
+**Features:**
+- Send daily reading messages
+- Send weekly leaderboard messages
+- Format messages for GroupMe (no embeds, plain text)
+- Include AI-generated questions
+- Handle GroupMe API rate limits
+- Error handling and retry logic
+
+**Based on existing:** `src/groupmeService.js` (simplified for single group)
+
+**Success Criteria:**
+- Can send messages to GroupMe Bible Plan group
+- Messages are properly formatted
+- Error handling works correctly
+- Test command sends successful message
+
+#### Task 2.3: Implement WebhookServer
+**Goal**: Create webhook server to receive GroupMe messages
+
+**Features:**
+- Express server on port 3001
+- `/health` endpoint for health checks
+- `/webhook/groupme` endpoint for GroupMe webhooks
+- Parse incoming messages
+- Filter for "read" responses only
+- Pass to ResponseTracker for processing
+- Graceful error handling
+
+**Based on existing:** `src/webhookServer.js` (simplified)
+
+**Success Criteria:**
+- Server starts on port 3001
+- Health check endpoint responds
+- Can receive GroupMe webhooks
+- Properly parses incoming messages
+- Only processes "read" responses
+
+#### Task 2.4: Implement ResponseTracker
+**Goal**: Track user "read" responses in Google Sheets
+
+**Features:**
+- Parse "read" or "✅" responses from GroupMe users
+- Map GroupMe user IDs to names
+- Update PROGRESS sheet with completion timestamp
+- Handle duplicate responses (same user, same day)
+- Log all tracking activity
+- Match response to current day's reading
+
+**Success Criteria:**
+- Detects "read" or "✅" messages
+- Updates Google Sheets PROGRESS tracking
+- Handles duplicate responses gracefully
+- Maps GroupMe users to sheet entries
+- Logs all tracking activity
+
+#### Task 2.5: Implement Message Formatter
+**Goal**: Format messages for GroupMe (simpler than Discord embeds)
+
+**Features:**
+- Format daily reading messages
+- Format weekly leaderboard messages
+- Include AI-generated questions
+- Plain text format (no embeds)
+- Include bonus links
+- Keep within GroupMe message limits (1000 chars)
+
+**Message Format:**
+```
+📖 Daily Bible Reading - 2025-10-15
+
+Day 1 (0.3% complete)
+📖 Genesis 1-3; Proverbs 1
+
+🎁 Bonus Resources:
+🎥 [Bible Project link]
+⏰ [10 Min Bible link]
+
+❓ Question of the Day:
+What's one way you can demonstrate integrity today?
+
+Reply "read" when completed!
+```
+
+**Success Criteria:**
+- Messages formatted correctly for GroupMe
+- AI questions included
+- Within character limits
+- Bonus links included
+- Clear call-to-action for tracking
+
+### Phase 3: Scheduling and Automation
+
+#### Task 3.1: Implement Scheduler
+**Goal**: Schedule daily and weekly messages
+
+**Features:**
+- Daily schedule: 5 AM CST (same as Discord bot)
+- Weekly schedule: Sunday 9 AM CST (same as Discord bot)
+- Get today's reading from Google Sheets
+- Format message with AI question
+- Send to GroupMe
+- Handle errors gracefully
+- Log all scheduled activities
+
+**Based on existing:** `src/scheduler.js` (simplified for GroupMe only)
+
+**Success Criteria:**
+- Daily messages sent at 5 AM CST
+- Weekly leaderboards sent Sunday 9 AM CST
+- Errors logged but don't crash bot
+- Timezone handling correct
+- Can manually trigger for testing
+
+#### Task 3.2: Implement Main Bot Entry Point
+**Goal**: Create main bot.js that orchestrates everything
+
+**Features:**
+- Initialize all services
+- Start webhook server
+- Start scheduler
+- Handle graceful shutdown
+- Log startup and status
+- Error handling and recovery
+
+**Success Criteria:**
+- Bot starts successfully
+- All services initialize
+- Webhook server running
+- Scheduler active
+- Graceful shutdown on SIGTERM/SIGINT
+- Status logged clearly
+
+### Phase 4: Service Management and Deployment
+
+#### Task 4.1: Create Management Scripts
+**Goal**: Create scripts for easy bot management
+
+**Scripts:**
+1. `start-bot.sh` - Start bot with validation
+2. `run-bot-service.sh` - Service management (start/stop/restart/status/logs)
+3. `install-service.sh` - Install systemd service
+4. `setup-alias.sh` - Convenient command aliases
+
+**Based on existing Discord bot scripts**
+
+**Success Criteria:**
+- Scripts work correctly
+- Colored output for better UX
+- Error handling and validation
+- Easy to use for non-technical users
+
+#### Task 4.2: Create Systemd Service
+**Goal**: Set up bot as a system service
+
+**Service File:** `groupme-bot.service`
+```ini
+[Unit]
+Description=BibleMan GroupMe Bot
+After=network.target
+
+[Service]
+Type=simple
+User=reese
+WorkingDirectory=/home/reese/.cursor/bibleman-groupme-bot
+ExecStart=/usr/bin/node src/bot.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/reese/.cursor/bibleman-groupme-bot/logs/bot.log
+StandardError=append:/home/reese/.cursor/bibleman-groupme-bot/logs/bot.log
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Success Criteria:**
+- Service file created
+- Can install with install-service.sh
+- Service starts on boot
+- Automatic restart on failure
+- Logs properly captured
+
+#### Task 4.3: Documentation
+**Goal**: Create comprehensive documentation
+
+**Documents:**
+1. README.md - Project overview, setup instructions
+2. SETUP_GUIDE.md - Step-by-step setup
+3. BOT_SCRIPTS_README.md - Script usage guide
+4. API_DOCUMENTATION.md - GroupMe API setup
+
+**Success Criteria:**
+- Clear setup instructions
+- GroupMe bot creation guide
+- Webhook configuration guide
+- Troubleshooting section
+- Examples and screenshots
+
+### Phase 5: Testing and Validation
+
+#### Task 5.1: Unit Testing
+**Goal**: Test individual components
+
+**Tests:**
+- GroupMeService can send messages
+- ResponseTracker can parse "read" responses
+- MessageFormatter creates valid messages
+- SheetsParser reads data correctly
+- AIService generates questions
+
+**Success Criteria:**
+- All unit tests pass
+- Test coverage >70%
+- Edge cases handled
+
+#### Task 5.2: Integration Testing
+**Goal**: Test bot end-to-end
+
+**Tests:**
+- Bot starts successfully
+- Webhook receives messages
+- "read" responses update Sheets
+- Daily messages send at scheduled time
+- Weekly leaderboards send correctly
+- AI questions generate successfully
+
+**Success Criteria:**
+- End-to-end workflow works
+- Error handling tested
+- Performance acceptable
+
+#### Task 5.3: Production Testing
+**Goal**: Test in actual GroupMe group
+
+**Tests:**
+- Send test message to GroupMe
+- Users reply with "read"
+- Verify progress sheet updates
+- Test daily reading message
+- Test weekly leaderboard
+- Monitor logs for errors
+
+**Success Criteria:**
+- Works in production GroupMe group
+- Users can respond and be tracked
+- No errors in production
+- Performance acceptable
+
+### Phase 6: Migration and Cleanup
+
+#### Task 6.1: Remove GroupMe from Discord Bot
+**Goal**: Clean up Discord bot after GroupMe bot is working
+
+**Actions:**
+- Remove GroupMe calls from Discord bot scheduler
+- Remove GroupMeService import
+- Remove webhook server (or reconfigure for Discord only)
+- Remove GroupMe environment variables from Discord .env
+- Update Discord bot documentation
+- Test Discord bot still works independently
+
+**Success Criteria:**
+- Discord bot works without GroupMe code
+- No broken imports or references
+- Both bots run independently
+- No conflicts or issues
+
+#### Task 6.2: Configure GroupMe Webhook
+**Goal**: Set up GroupMe to send webhooks to the bot
+
+**Steps:**
+1. Create GroupMe bot at https://dev.groupme.com/bots
+2. Set callback URL to: `http://your-server:3001/webhook/groupme`
+3. Test webhook delivery
+4. Configure firewall/port forwarding if needed
+
+**Success Criteria:**
+- GroupMe sends webhooks to bot
+- Bot receives and processes webhooks
+- "read" responses tracked correctly
+
+### Phase 7: Deployment and Monitoring
+
+#### Task 7.1: Deploy to Production
+**Goal**: Get bot running in production
+
+**Steps:**
+1. Push code to GitHub
+2. Clone to production server
+3. Install dependencies
+4. Configure environment variables
+5. Set up Google Sheets credentials
+6. Install systemd service
+7. Start bot
+8. Monitor logs
+
+**Success Criteria:**
+- Bot running on production server
+- Systemd service active
+- Logs show successful operation
+- No errors
+
+#### Task 7.2: Monitor and Validate
+**Goal**: Ensure bot works correctly in production
+
+**Monitoring:**
+- Check logs daily for errors
+- Verify daily messages sent
+- Verify weekly leaderboards sent
+- Verify user tracking works
+- Monitor API usage
+- Check performance
+
+**Success Criteria:**
+- Bot runs 24/7 without issues
+- All scheduled messages sent
+- User tracking accurate
+- No performance degradation
+- Error rate <1%
+
+---
+
+## Implementation Summary
+
+**New Repository:**
+- Name: `bibleman-groupme-bot`
+- Location: `/home/reese/.cursor/bibleman-groupme-bot/`
+- Separate Git repository
+
+**Key Features:**
+1. ✅ Sends daily Bible reading messages (5 AM CST)
+2. ✅ Includes AI-generated application questions
+3. ✅ Sends weekly leaderboard (Sunday 9 AM CST)
+4. ✅ Receives "read" responses from users
+5. ✅ Tracks completion in Google Sheets PROGRESS
+6. ✅ Bible Plan group only
+7. ✅ Independent operation from Discord bot
+
+**Architecture:**
+- Standalone Node.js application
+- Express webhook server (port 3001)
+- Cron-based scheduling
+- Google Sheets integration
+- Venice AI integration
+- Systemd service management
+
+**Estimated Implementation Time:** 4-6 hours
+
+**Risk Assessment:** Medium
+- New repository setup
+- Code adaptation required
+- GroupMe webhook configuration needed
+- User tracking logic new
+- Testing in production required
+
+---
+
+## Ready for Implementation
+
+The plan is complete and comprehensive. When you're ready, say "proceed" and I'll switch to Executor mode to begin implementing the separate GroupMe bot.
+
+---
+
+## PIVOT: SIMPLER APPROACH CHOSEN ✅
+
+**User Decision: Option A - Minimal Webhook Service**
+
+Instead of a full separate bot, we'll create a minimal webhook service that:
+- ✅ Receives GroupMe webhooks (port 3001)
+- ✅ Tracks "read" responses from users
+- ✅ Updates Google Sheets PROGRESS tracking
+- ✅ That's it! (~200 lines of code total)
+
+**Discord bot keeps doing:**
+- ✅ Reading from Google Sheets
+- ✅ Generating AI questions
+- ✅ Sending to Discord
+- ✅ Sending to GroupMe (already working!)
+- ✅ Tracking Discord reactions
+
+**Webhook service handles:**
+- ✅ Receiving GroupMe "read" responses
+- ✅ Updating PROGRESS sheet
+
+**Estimated Time:** 30-45 minutes (instead of 4-6 hours!)
+
+---
+
+## Simplified Implementation Plan: GroupMe Response Tracker
+
+### Task 1: Create Minimal Webhook Service Project
+**Goal**: Set up a lightweight webhook service
+
+**Structure:**
+```
+bibleman-groupme-bot/
+├── src/
+│   ├── webhook-server.js       # Main webhook server (~100 lines)
+│   ├── responseTracker.js      # Track "read" responses (~80 lines)
+│   └── utils/
+│       └── logger.js            # Logging (copied)
+├── data/
+│   └── credentials.json         # Google Sheets credentials (symlink)
+├── logs/                        # Log files
+├── .env                         # Environment variables
+├── env.example                  # Example environment file
+├── package.json                 # Minimal dependencies
+├── start-webhook.sh             # Start script
+├── run-webhook-service.sh       # Service management
+├── install-service.sh           # Systemd installation
+├── groupme-webhook.service      # Systemd service file
+└── README.md                    # Documentation
+```
+
+**Success Criteria:**
+- Minimal project structure
+- Only essential files
+- No code duplication except utilities
+
+### Task 2: Implement Response Tracker
+**Goal**: Track "read" responses in Google Sheets
+
+**Features:**
+- Parse GroupMe webhooks
+- Detect "read" or "✅" messages
+- Map GroupMe user IDs to names
+- Update PROGRESS sheet with timestamp
+- Handle duplicate responses
+- Log all activity
+
+**Success Criteria:**
+- Receives webhooks successfully
+- Updates PROGRESS sheet correctly
+- Handles errors gracefully
+- Logs activity for debugging
+
+### Task 3: Create Service Management
+**Goal**: Make it easy to run as a service
+
+**Files:**
+- `start-webhook.sh` - Start the webhook service
+- `run-webhook-service.sh` - Manage service (start/stop/status/logs)
+- `install-service.sh` - Install systemd service
+- `groupme-webhook.service` - Systemd service configuration
+
+**Success Criteria:**
+- Service starts automatically
+- Can manage with simple commands
+- Logs properly captured
+- Runs independently of Discord bot
+
+### Task 4: Test and Deploy
+**Goal**: Verify it works with real GroupMe
+
+**Tests:**
+- Webhook receives messages
+- "read" responses tracked
+- PROGRESS sheet updates
+- Works with Discord bot running
+
+**Success Criteria:**
+- End-to-end workflow works
+- Both services run independently
+- User responses tracked correctly
+
+---
+
+## Ready to Implement Simplified Approach
+
+This is MUCH simpler - just a webhook receiver, not a full bot. Ready to proceed with this approach!
+
 **REACTION TRACKING IMPROVEMENTS APPLIED** ✅
 
 **What's Been Fixed:**
@@ -1296,9 +2079,146 @@ LOG_LEVEL=info
 - **Invalid Data**: Graceful degradation with fallback messages
 - **Network Issues**: Automatic reconnection with health checks
 
+**GROUPME MESSAGE FORMAT AND DUPLICATE FIX APPLIED** ✅
+
+**Issues Reported:**
+1. GroupMe message sent twice
+2. GroupMe message didn't include the Bible reading verses
+
+**Root Causes Identified:**
+
+1. **Missing Verses Issue:**
+   - GroupMe service was using `readingPlan.due` (Column C - empty) instead of `readingPlan.reading` (Column D - actual verses)
+   - Message format was different from Discord bot format
+
+2. **Duplicate Messages Issue:**
+   - Bot was sending to multiple Discord channels (#bible-plan and #testing)
+   - GroupMe message was sent ONCE PER DISCORD CHANNEL instead of once total
+   - Logs showed: First send at 10:00:00 (channel #bible-plan), Second send at 10:00:06 (channel #testing)
+
+**Fixes Applied:**
+
+1. **Updated GroupMe Message Format (`src/groupmeService.js`):**
+   - Changed `createGroupMeReadingMessage()` to match Discord format exactly
+   - Now uses `readingPlan.reading` (Column D) for Bible verses
+   - Now uses `readingPlan.day` (Column E) for day number
+   - Same bonus links as Discord (tenMinBible, bibleProject, bonus)
+   - Includes AI-generated "Question of the Day" (same as Discord)
+   - Footer: "React with ✅ when completed" (same as Discord)
+
+2. **Fixed Duplicate Send Issue (`src/scheduler.js`):**
+   - Moved GroupMe send OUTSIDE the Discord channel loop
+   - Now sends to GroupMe only ONCE after all Discord channels complete
+   - Reading plan and AI question generated once and reused for all channels
+   - Updated `sendDailyReading()` to collect reading plan from first channel
+   - Updated `sendDailyReadingToChannel()` to accept and return reading plan + AI question
+
+3. **Optimized AI Question Generation:**
+   - AI question now generated only ONCE per day (not per channel)
+   - Shared between all Discord channels and GroupMe
+   - Reduces API calls and ensures consistency
+
+**Code Changes:**
+- `src/groupmeService.js`:
+  - Rewrote `createGroupMeReadingMessage()` to match Discord format
+  - Added `calculateProgressPercentage()` method (same as Discord)
+  - Updated `sendDailyReadingToGroupMe()` to accept AI question parameter
+  
+- `src/scheduler.js`:
+  - Refactored `sendDailyReading()` to send to GroupMe once after all Discord channels
+  - Updated `sendDailyReadingToChannel()` to accept/return reading plan and AI question
+  - Removed duplicate GroupMe send from inside channel loop
+  
+- `src/messageFormatter.js`:
+  - Updated to use pre-generated AI question from `readingPlan.aiQuestion`
+  - Fallback to generate AI question if not pre-generated (backward compatibility)
+
+**Testing Results:**
+```
+GroupMe Message Format:
+📖 Daily Bible Reading - 2025-10-15
+
+Day 4 (1.1% complete)
+📖 Genesis 10-12; Proverbs 4
+
+🎁 Bonus Content & Resources:
+https://open.spotify.com/episode/4hwHmBAi8RTV0xr7YQz1vH
+https://youtu.be/AzmYV8GNAIM
+https://example.com/bonus-resource
+
+❓ Question of the Day:
+What's one specific way you can demonstrate faithfulness in your commitments this week?
+
+React with ✅ when completed
+```
+
+✅ Format matches Discord exactly
+✅ Bible verses now included
+✅ AI question included
+✅ No duplicate sends
+✅ No linting errors
+✅ All bonus links included
+
+**Current Status:**
+- GroupMe now sends the exact same content as Discord (but in plain text format)
+- Duplicate send issue resolved - GroupMe message sent only once per day
+- AI question generated only once and shared across all channels
+- Ready for production use with next scheduled send
+
+**Benefits:**
+- **Consistency**: GroupMe users see the exact same content as Discord users
+- **Efficiency**: AI question generated once, not per channel
+- **No Duplicates**: GroupMe message sent only once regardless of number of Discord channels
+- **Maintainability**: Single source of truth for message content
+
+**TOTAL DAYS CALCULATION FIX** ✅
+
+**Issue Reported:**
+- Weekly update showed everyone as 5-7 days behind
+- Regan should have been caught up (0 days behind) when the Sunday update went out
+- Total days calculation was showing 14 days when it should have shown 7
+
+**Root Cause:**
+- `getTotalReadingDays()` in `src/sheetsTracker.js` was using `Math.ceil(timeDiff) + 1`
+- This added an extra day to the calculation
+- For Oct 13-25 period (12 days), it was calculating 14 days
+- Caused everyone to appear more behind than they actually were
+
+**Investigation Results:**
+- Reading plan started: Oct 13, 2025
+- Sunday Oct 20 weekly update time: Should have been 7 days total
+- Regan had 7 reactions by Oct 20: Should have shown 0 days behind
+- Old calculation showed 14 days: Incorrectly showed everyone 5-7 days behind
+
+**Fix Applied:**
+1. Changed calculation from `Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1` to `Math.floor(timeDiff / (1000 * 60 * 60 * 24))`
+2. Use UTC date strings (`YYYY-MM-DDT00:00:00Z`) to avoid timezone conversion issues
+3. Calculate days elapsed since start date (not inclusive of both start and end)
+4. Applied same fix to both `getTotalReadingDays()` and `getCurrentReadingDay()`
+
+**Test Results:**
+- ✅ Oct 13-25 now correctly shows 12 days (was showing 14)
+- ✅ Regan shows 3 days behind as of Oct 25 (9 completed out of 12) - correct!
+- ✅ On Sunday Oct 20, would have shown 0 days behind (7 out of 7) - correct!
+
+**Git Commit:**
+- **Commit Hash**: c23607c
+- **Commit Message**: "fix: Correct total days calculation in weekly update"
+- **Files Modified**: src/sheetsTracker.js (1 file changed, 16 insertions(+), 8 deletions(-))
+
+**Current Status:**
+- Fix deployed to GitHub
+- Weekly updates will now show accurate days behind counts
+- Next Sunday update (Oct 27) will use the corrected calculation
+
 ## Lessons
 
 *This section will be updated with learnings and solutions during development*
+
+**Lesson: GroupMe Duplicate Messages**
+- When sending to multiple Discord channels, always send to GroupMe ONCE after all Discord sends
+- Don't send to GroupMe inside the channel iteration loop
+- GroupMe doesn't have the concept of channels/guilds like Discord, so duplicates are more problematic
 
 ## Technical Requirements
 

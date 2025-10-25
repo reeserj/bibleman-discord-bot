@@ -87,6 +87,7 @@ class SheetsTracker {
       let nickname = progressData.username;
       let guildName = 'Unknown Server';
       let channelName = 'Unknown Channel';
+      let dayNumber = null;
       
       try {
         const guild = progressData.reaction.message.guild;
@@ -101,6 +102,20 @@ class SheetsTracker {
         if (channel) {
           channelName = channel.name;
         }
+        
+        // Extract day number from the message embed
+        const message = progressData.reaction.message;
+        if (message.embeds && message.embeds.length > 0) {
+          const embed = message.embeds[0];
+          if (embed.description) {
+            // Extract day number from "Day X (Y% complete)" format
+            const dayMatch = embed.description.match(/Day (\d+)/i);
+            if (dayMatch) {
+              dayNumber = parseInt(dayMatch[1]);
+              logger.debug(`Extracted day number ${dayNumber} from message embed`);
+            }
+          }
+        }
       } catch (error) {
         logger.warn(`Could not fetch server/channel info for user ${progressData.userId}:`, error.message);
       }
@@ -113,7 +128,8 @@ class SheetsTracker {
         progressData.timestamp,      // Reaction time column (CST)
         progressData.cstTime,        // CST time column with timezone label
         guildName,                   // Server/Guild name
-        channelName                  // Channel name
+        channelName,                 // Channel name
+        dayNumber || ''              // Day number from message embed
       ];
 
       if (progressData.action === 'add') {
@@ -136,10 +152,10 @@ class SheetsTracker {
         
         logger.info(`No duplicate found after 3 attempts, adding new row for ${nickname} (${progressData.userId}) on ${progressData.date} in ${guildName}`);
         
-        // Append the row to the Progress tab (now includes guild and channel columns)
+        // Append the row to the Progress tab (now includes guild, channel, and day columns)
         await this.sheets.spreadsheets.values.append({
           spreadsheetId: sheetId,
-          range: `${sheetName}!A:G`,
+          range: `${sheetName}!A:H`,
           valueInputOption: 'RAW',
           insertDataOption: 'INSERT_ROWS',
           resource: {
@@ -147,7 +163,8 @@ class SheetsTracker {
           }
         });
 
-        logger.info(`Reaction data written to ${sheetName} tab: ${nickname} (${progressData.userId}) on ${progressData.date}`);
+        const dayInfo = dayNumber ? ` (Day ${dayNumber})` : '';
+        logger.info(`Reaction data written to ${sheetName} tab: ${nickname} (${progressData.userId}) on ${progressData.date}${dayInfo}`);
       } else if (progressData.action === 'remove') {
         // Remove the row from the Progress tab
         await this.removeReactionFromSheet(progressData);
@@ -188,7 +205,7 @@ class SheetsTracker {
       // First, get all the data to find the row to delete
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
-        range: `${sheetName}!A:G`
+        range: `${sheetName}!A:H`
       });
       
       const rows = response.data.values;
@@ -248,7 +265,7 @@ class SheetsTracker {
       
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
-        range: `${sheetName}!A:G`
+        range: `${sheetName}!A:H`
       });
       
       const rows = response.data.values;
@@ -260,9 +277,10 @@ class SheetsTracker {
       for (let i = 1; i < rows.length; i++) { // Start from 1 to skip header
         const row = rows[i];
         const rowGuild = row[5] || ''; // Column F is guild name
+        const rowDay = row[7] || ''; // Column H is day number
         
         if (row[0] === date && row[1] === userId && rowGuild === guildName) {
-          logger.info(`Found existing row at index ${i + 1}: date=${row[0]}, userId=${row[1]}, name=${row[2]}, guild=${row[5]}, channel=${row[6]}`);
+          logger.info(`Found existing row at index ${i + 1}: date=${row[0]}, userId=${row[1]}, name=${row[2]}, guild=${row[5]}, channel=${row[6]}, day=${rowDay}`);
           return i + 1; // Return 1-based row index
         }
       }
@@ -304,7 +322,7 @@ class SheetsTracker {
                   title: 'Progress',
                   gridProperties: {
                     rowCount: 1000,
-                    columnCount: 5
+                    columnCount: 8
                   }
                 }
               }
@@ -314,17 +332,17 @@ class SheetsTracker {
       });
 
       // Add headers to the new sheet to match your structure
-      const headers = ['Date', 'User', 'Name', 'Reaction Time (CST)', 'CST Time'];
+      const headers = ['Date', 'User', 'Name', 'Reaction Time (CST)', 'CST Time', 'Guild', 'Channel', 'Day'];
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: sheetId,
-        range: 'Progress!A1:E1',
+        range: 'Progress!A1:H1',
         valueInputOption: 'RAW',
         resource: {
           values: [headers]
         }
       });
 
-      logger.info('Progress tab created successfully with headers: Date, User, Name, Reaction Time (CST), CST Time');
+      logger.info('Progress tab created successfully with headers: Date, User, Name, Reaction Time (CST), CST Time, Guild, Channel, Day');
       
     } catch (error) {
       logger.error('Error creating progress tab:', error);
