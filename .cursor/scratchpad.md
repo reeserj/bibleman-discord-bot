@@ -2268,6 +2268,612 @@ React with ✅ when completed
 - Existing rows won't have day numbers (column will be empty for old data)
 - Next reaction will test the new logging
 
+---
+
+## NEW REQUEST: FIX READING TRACKER TO USE DAY NUMBER + USERNAME ✅
+
+**User Requirement:**
+- Change reading tracker to use the **day number from the message** and **username** for tracking
+- This will be more accurate than using the current date
+- Allows users to catch up on multiple days on the same calendar date
+
+### Background and Current State
+
+**Current Implementation Issues:**
+
+1. **Date-Based Tracking Problem:**
+   - Currently tracks: `date` (when user reacted) + `userId` + `guild`
+   - Problem: If user catches up and reacts to Day 1 and Day 2 on October 25th, only ONE gets recorded
+   - The duplicate detection sees: same date (Oct 25) + same user + same guild = duplicate!
+   - Second reaction gets rejected as a duplicate
+
+2. **Progress Counting Problem:**
+   - Leaderboard counts unique **dates** per user, not unique **days completed**
+   - Code: `userCompletions[userId].dates.add(date)` (line 478 in sheetsTracker.js)
+   - If user completes Day 1, 2, and 3 all on Oct 25, only counts as 1 day of progress
+   - Artificially inflates "days behind" calculation
+
+3. **What's Already Working:**
+   - Day number IS extracted from message embed ✅ (line 112-114)
+   - Day number IS stored in Progress sheet column H ✅
+   - BUT: Day number is NOT used for duplicate detection ❌
+   - BUT: Day number is NOT used for progress counting ❌
+
+**Progress Sheet Current Structure:**
+- Column A: Date (current date when reacted - the problem!)
+- Column B: User (Discord user ID)
+- Column C: Name (nickname in server)
+- Column D: Reaction Time (CST)
+- Column E: CST Time (with timezone label)
+- Column F: Guild (server name)
+- Column G: Channel (channel name)
+- Column H: Day (day number from message) - EXISTS but NOT USED!
+
+### Problem Examples
+
+**Example 1: Catching Up on Multiple Days**
+- Oct 25: User reacts to "Day 1" message → Recorded ✅
+- Oct 25: User reacts to "Day 2" message → **REJECTED as duplicate** ❌
+- Result: User only gets credit for 1 day when they read 2 days
+
+**Example 2: Reacting to Old Messages**
+- Oct 15: Bot sends "Day 1" message
+- Oct 16: Bot sends "Day 2" message
+- Oct 17: User reacts to both Day 1 and Day 2 messages
+- Result: Only one gets recorded (both have date=Oct 17)
+
+### Proposed Solution
+
+**Change 1: Duplicate Detection Logic**
+- **Old:** Match by `date + userId + guild`
+- **New:** Match by `dayNumber + userId + guild`
+- **Impact:** Allows multiple reactions per day if they're for different reading days
+
+**Change 2: Progress Counting Logic**
+- **Old:** Count unique dates: `dates.add(date)`
+- **New:** Count unique day numbers: `completedDays.add(dayNumber)`
+- **Impact:** Accurate count of actual reading days completed
+
+**Change 3: Primary Key for Tracking**
+- **Old Primary Key:** Date (when user reacted)
+- **New Primary Key:** Day Number (which reading they completed)
+- **Keep Date:** Still record as metadata for audit trail
+
+**Change 4: Sheet Structure (Column Reorder)**
+- **New Order:**
+  - Column A: **Day** (day number - PRIMARY KEY)
+  - Column B: **User** (Discord user ID - part of composite key)
+  - Column C: **Name** (nickname)
+  - Column D: **Guild** (server name - part of composite key)
+  - Column E: **Date** (when they reacted - metadata only)
+  - Column F: **Reaction Time** (CST)
+  - Column G: **CST Time** (with timezone label)
+  - Column H: **Channel** (channel name)
+
+**Rationale:** Put the primary key columns first for clarity
+
+### Impact Analysis
+
+**Benefits:**
+✅ Users can catch up on multiple days in one sitting
+✅ More accurate tracking of actual reading progress
+✅ "Days behind" calculation will be correct
+✅ Supports reading out of order (if user wants to go back)
+
+**Risks:**
+⚠️ Need to update existing queries that rely on column order
+⚠️ Need to handle rows without day numbers (old data)
+⚠️ May need to migrate existing Progress sheet data
+
+**Backward Compatibility:**
+- Existing rows without day numbers will be ignored in counts
+- New code will only track reactions that have day numbers
+- Old data doesn't break, just won't be counted
+
+### Questions for Clarification
+
+Before proceeding with implementation, need to confirm:
+
+1. **Sheet Restructuring:**
+   - Should we reorder the Progress sheet columns as proposed?
+   - Or keep current order and just change the logic?
+   - **Recommendation:** Reorder for clarity (day number should be first column)
+
+2. **Existing Data:**
+   - Do we need to migrate existing Progress sheet data?
+   - Or just start fresh with new tracking logic?
+   - **Recommendation:** Keep existing data, add day numbers to new rows only
+
+3. **Duplicate Handling:**
+   - If user reacts to same day multiple times, should we:
+     a) Keep only first reaction (ignore subsequent)
+     b) Keep only last reaction (overwrite)
+     c) Keep all reactions (multiple rows per day)
+   - **Recommendation:** Keep only first reaction (option a)
+
+4. **Missing Day Numbers:**
+   - What if we can't extract day number from a message?
+   - Should we still record it with null/empty day number?
+   - **Recommendation:** Don't record if day number is missing
+
+5. **Reading Out of Order:**
+   - If user completes Day 5 before Day 3, should both count?
+   - Or should we enforce sequential reading?
+   - **Recommendation:** Both count, no enforcement
+
+---
+
+## High-level Task Breakdown: Reading Tracker Refactor
+
+### Task 1: Analyze and Document Current Code Dependencies
+**Goal:** Identify all code that relies on the current Progress sheet structure
+
+**Actions:**
+1. Review `writeReactionToSheet()` - current column order and duplicate logic
+2. Review `findExistingRow()` - how it searches for duplicates
+3. Review `removeReactionFromSheet()` - how it finds rows to delete
+4. Review `getLeaderboard()` - how it counts completed days
+5. Review `getUserProgress()` - how it calculates user stats
+6. Document all column index references (e.g., `row[0]`, `row[1]`, etc.)
+
+**Success Criteria:**
+- Complete list of all functions that access Progress sheet
+- Complete list of all column index references
+- Understanding of data flow from reaction → sheet → leaderboard
+- Documented in scratchpad for reference
+
+---
+
+### Task 2: Update Duplicate Detection Logic
+**Goal:** Change duplicate detection to use day number instead of date
+
+**Current Implementation:**
+```javascript
+// findExistingRow() - line 282
+if (row[0] === date && row[1] === userId && rowGuild === guildName)
+```
+
+**New Implementation:**
+```javascript
+// Match by: dayNumber + userId + guild
+if (row[0] === dayNumber && row[1] === userId && rowGuild === guildName)
+```
+
+**Changes Needed:**
+1. Update `findExistingRow(date, userId, guildName)` signature
+   - Change to: `findExistingRow(dayNumber, userId, guildName)`
+2. Update duplicate check to compare `dayNumber` instead of `date`
+3. Update call sites in `writeReactionToSheet()` to pass `dayNumber`
+4. Update logging to show day number instead of date in duplicate messages
+
+**Success Criteria:**
+- `findExistingRow()` accepts `dayNumber` parameter instead of `date`
+- Duplicate detection compares day number + user + guild
+- Test: Two reactions on same date but different days both get recorded
+- Logging shows: "Found existing row for Day X by user Y"
+
+---
+
+### Task 3: Restructure Progress Sheet Column Order
+**Goal:** Reorder columns to put primary keys first
+
+**Current Order:**
+- A: Date, B: User, C: Name, D: Reaction Time, E: CST Time, F: Guild, G: Channel, H: Day
+
+**New Order:**
+- A: **Day**, B: **User**, C: **Name**, D: **Guild**, E: Date, F: Reaction Time, G: CST Time, H: Channel
+
+**Changes Needed:**
+1. Update `createProgressTab()` header row (line 335)
+2. Update `writeReactionToSheet()` rowData array order (line 124-133)
+3. Update `findExistingRow()` column indices (line 279-283)
+4. Update `removeReactionFromSheet()` column indices (line 221-223)
+5. Update `getLeaderboard()` column indices (line 460-463)
+6. Update `getUserProgress()` range to include all columns if needed
+7. Add migration note for existing sheets
+
+**Success Criteria:**
+- Headers: Day | User | Name | Guild | Date | Reaction Time | CST Time | Channel
+- All column references updated to new indices
+- New rows written in new format
+- Existing code handles both old and new format gracefully
+
+---
+
+### Task 4: Update Progress Counting Logic
+**Goal:** Count unique day numbers instead of unique dates
+
+**Current Implementation:**
+```javascript
+// getLeaderboard() - line 476-479
+if (!userCompletions[userId].dates.has(date)) {
+  userCompletions[userId].completedDays++;
+  userCompletions[userId].dates.add(date);
+}
+```
+
+**New Implementation:**
+```javascript
+// Count unique day numbers instead
+if (!userCompletions[userId].completedDays.has(dayNumber)) {
+  userCompletions[userId].completedDays.add(dayNumber);
+}
+```
+
+**Changes Needed:**
+1. Update `getLeaderboard()` to use Set of day numbers instead of dates
+2. Change `dates: new Set()` to `completedDays: new Set()`
+3. Read day number from column A (new structure) or column H (old structure)
+4. Count `completedDays.size` for total
+5. Skip rows where day number is missing or empty
+6. Update logging to show day numbers completed
+
+**Success Criteria:**
+- Leaderboard counts unique day numbers per user
+- Test: User with 3 reactions on same date for different days shows 3 completed
+- Old data without day numbers is gracefully ignored
+- Logging shows: "User X completed days: [1, 2, 5, 7]"
+
+---
+
+### Task 5: Add Validation and Error Handling
+**Goal:** Handle edge cases and missing day numbers
+
+**Validation Checks:**
+1. Day number must be extracted from message (required)
+2. Day number must be a positive integer
+3. Day number must be reasonable (1-366 for Bible reading plan)
+4. User must be valid Discord user
+5. Guild information must be available
+
+**Error Handling:**
+1. If day number extraction fails:
+   - Log warning with message ID
+   - Skip recording (don't write to sheet)
+   - Return early from `trackReaction()`
+
+2. If day number is invalid (null, 0, negative, > 366):
+   - Log warning with actual value
+   - Skip recording
+   - Return early
+
+3. If duplicate detected:
+   - Log info (not error)
+   - Return early
+   - Don't update existing row
+
+**Changes Needed:**
+1. Add validation in `writeReactionToSheet()` before writing
+2. Add early return if validations fail
+3. Improve logging for troubleshooting
+4. Add comment explaining why validation is needed
+
+**Success Criteria:**
+- Day number validation works correctly
+- Invalid day numbers don't create sheet rows
+- Clear log messages explain why recording was skipped
+- No crashes or errors with invalid data
+
+---
+
+### Task 6: Update Sheet Range References
+**Goal:** Ensure all Google Sheets API calls use correct ranges
+
+**Current Ranges:**
+- `Progress!A:H` (8 columns)
+
+**Review and Update:**
+1. `createProgressTab()` - column count still 8 ✅
+2. `writeReactionToSheet()` - `A:H` ✅
+3. `findExistingRow()` - `A:H` ✅
+4. `removeReactionFromSheet()` - `A:H` ✅
+5. `getLeaderboard()` - currently `A:E`, should be `A:H` to get all data
+6. `getUserProgress()` - currently `A:E`, should be `A:H` to get all data
+
+**Changes Needed:**
+1. Update `getLeaderboard()` range from `A:E` to `A:H` (line 440)
+2. Update `getUserProgress()` range from `A:E` to `A:H` (line 366)
+3. Update column index references in both functions
+4. Test that all queries still work
+
+**Success Criteria:**
+- All sheet operations use correct ranges
+- No "index out of bounds" errors
+- All columns accessible in queries
+- Performance is acceptable
+
+---
+
+### Task 7: Backward Compatibility for Existing Data
+**Goal:** Handle existing Progress sheet data that doesn't have proper day numbers
+
+**Strategies:**
+1. **Detection:** Check if row[0] is a day number (integer) or date (YYYY-MM-DD)
+2. **Old Format:** If date in column A, look for day number in column H
+3. **New Format:** If day number in column A, use it directly
+4. **Missing Day Numbers:** Skip rows that don't have day numbers in either location
+
+**Changes Needed:**
+1. Add helper function: `extractDayNumber(row)` 
+   - Returns day number from column A (new format) or column H (old format)
+   - Returns null if not found or invalid
+2. Update `getLeaderboard()` to use `extractDayNumber()`
+3. Update `getUserProgress()` to use `extractDayNumber()`
+4. Log warning for rows without day numbers (once per session)
+
+**Success Criteria:**
+- Code works with both old and new sheet formats
+- Old data doesn't cause crashes
+- New tracking works immediately without migration
+- Clear logging indicates which format is being used
+
+---
+
+### Task 8: Update Logging and Debugging
+**Goal:** Improve logging for troubleshooting the new day-based tracking
+
+**Logging Improvements:**
+1. **Tracking Success:**
+   - "✅ Recorded Day X for user Y in guild Z"
+   - "⏭️ Skipped duplicate: Day X already recorded for user Y"
+
+2. **Validation Failures:**
+   - "⚠️ No day number found in message, skipping tracking"
+   - "⚠️ Invalid day number (X), skipping tracking"
+
+3. **Progress Calculation:**
+   - "📊 User X: Completed days [1, 2, 3, 5] = 4 days"
+   - "📊 Total days: X, User progress: Y days, Days behind: Z"
+
+4. **Backward Compatibility:**
+   - "ℹ️ Processing row in old format (day in column H)"
+   - "ℹ️ Processing row in new format (day in column A)"
+
+**Changes Needed:**
+1. Add structured logging with emojis for visibility
+2. Group related log messages
+3. Use appropriate log levels (debug, info, warn, error)
+4. Include relevant context (user, day, guild) in each message
+
+**Success Criteria:**
+- Logs are easy to read and understand
+- Can trace a reaction from Discord → Sheet → Leaderboard
+- Can identify issues quickly from logs
+- Log volume is reasonable (not too verbose)
+
+---
+
+### Task 9: Testing Plan
+**Goal:** Comprehensive testing of the new day-based tracking
+
+**Test Scenarios:**
+
+1. **Single Day Tracking:**
+   - User reacts to Day 1 → Should record
+   - User reacts to Day 1 again → Should skip (duplicate)
+
+2. **Multiple Days Same Date:**
+   - User reacts to Day 1 on Oct 25 → Should record
+   - User reacts to Day 2 on Oct 25 → Should record (different day)
+   - User reacts to Day 3 on Oct 25 → Should record (different day)
+   - Leaderboard should show: 3 days completed
+
+3. **Out of Order Reading:**
+   - User reacts to Day 5 → Should record
+   - User reacts to Day 2 → Should record
+   - User reacts to Day 7 → Should record
+   - Leaderboard should show: 3 days completed (days 2, 5, 7)
+
+4. **Missing Day Number:**
+   - User reacts to message without day number → Should skip with warning
+
+5. **Old vs New Data:**
+   - Sheet has old format data (day in column H)
+   - New reaction creates new format data (day in column A)
+   - Leaderboard counts both correctly
+
+6. **Multiple Users:**
+   - User A completes Day 1
+   - User B completes Day 1
+   - Both should be recorded (different users)
+
+**Test Implementation:**
+1. Create test script: `test-day-tracking.js`
+2. Mock Discord reactions with different day numbers
+3. Verify sheet writes correctly
+4. Verify duplicate detection works
+5. Verify leaderboard counts correctly
+
+**Success Criteria:**
+- All test scenarios pass
+- No unexpected errors or crashes
+- Leaderboard calculations are accurate
+- Logs show expected behavior
+
+---
+
+### Task 10: Documentation and Deployment
+**Goal:** Document changes and deploy to production
+
+**Documentation:**
+1. Update scratchpad with implementation details
+2. Update code comments explaining day-based tracking
+3. Document Progress sheet structure (new column order)
+4. Add migration notes for existing deployments
+
+**Deployment Steps:**
+1. Commit changes to git with descriptive message
+2. Push to GitHub repository
+3. Test on development bot first (if available)
+4. Deploy to production bot
+5. Monitor logs for first 24 hours
+6. Verify leaderboard calculations are accurate
+
+**Rollback Plan:**
+If issues occur:
+1. Revert to previous commit
+2. Redeploy old version
+3. Investigate and fix issues
+4. Test more thoroughly before redeploying
+
+**Success Criteria:**
+- Code committed with clear commit message
+- Changes deployed successfully
+- Bot continues tracking reactions
+- No user-facing errors
+- Leaderboard shows accurate progress
+
+---
+
+## Implementation Priority
+
+**Critical Path (Must Do First):**
+1. Task 1: Analyze current code dependencies
+2. Task 3: Restructure column order
+3. Task 2: Update duplicate detection
+4. Task 4: Update progress counting
+
+**Secondary (Important but Can Wait):**
+5. Task 5: Add validation
+6. Task 6: Update sheet ranges
+7. Task 8: Update logging
+
+**Final (Polish):**
+8. Task 7: Backward compatibility
+9. Task 9: Testing
+10. Task 10: Documentation and deployment
+
+**Estimated Time:** 2-3 hours for full implementation
+
+---
+
+## USER DECISION: START WITH AUDIT ✅
+
+User has chosen to start with an audit script to analyze current Discord reactions before implementing changes.
+
+**Approach:** Create audit script to query Discord directly and see:
+1. Which daily reading messages exist
+2. Which days have reactions
+3. Which users reacted to which day numbers
+4. Compare Discord reality vs Progress sheet data
+
+This will help validate the problem and inform the implementation.
+
+---
+
+## EXECUTOR MODE: IN PROGRESS
+
+### Task 0: Create Discord Reaction Audit Script
+
+**Goal:** Analyze current state of reactions in Discord to understand the problem scope
+
+**Actions:**
+1. Create `audit-discord-reactions.js` script
+2. Connect to Discord and fetch messages from Bible reading channels
+3. Extract day numbers from message embeds
+4. List all reactions and users for each day
+5. Compare with Progress sheet data
+6. Output summary report
+
+**Status:** ✅ COMPLETE
+
+### Audit Results
+
+**Created:** `audit-discord-reactions.js` - Script to analyze Discord reactions vs Progress sheet
+
+**Key Findings:**
+
+1. **Major Discrepancies Found:**
+   - All users have significantly MORE reactions in Discord than recorded in Progress sheet
+   - Example: Regan has 13 days completed in Discord, but only 9 in Progress sheet (4 days missing!)
+   - Example: benzamora has 11 days in Discord, but only 4 in sheet (7 days missing!)
+
+2. **Discord Reality (Days 1-13):**
+   - Regan: 13 days completed - Days [1,2,3,4,5,6,7,8,9,10,11,12,13]
+   - jdpoovey: 12 days completed - Days [1,2,3,4,5,6,7,8,9,10,11,12]
+   - Joey: 9 days - Days [1,3,4,6,7,8,9,11,12]
+   - benzamora: 11 days - Days [1,3,4,5,6,7,8,9,10,11,12]
+   - Pierce: 10 days - Days [1,2,4,5,6,7,8,9,10,11]
+   - Hank: 9 days - Days [1,2,3,6,7,8,9,10,11]
+   - Olson: 7 days - Days [1,2,3,4,5,6,7]
+   - Browen: 7 days - Days [1,2,3,4,5,6,7]
+
+3. **Progress Sheet Data:**
+   - Regan: 9 days (missing 4)
+   - jdpoovey: 8 days (missing 4)
+   - Pierce: 8 days (missing 2)
+   - Joey: 7 days (missing 2)
+   - Hank: 7 days (missing 2)
+   - benzamora: 4 days (missing 7!)
+   - Olson: 4 days (missing 3)
+   - Browen: 2 days (missing 5!)
+
+4. **Problem Confirmed:**
+   - Current date-based tracking is LOSING reactions
+   - Users who catch up on multiple days on same date only get ONE day recorded
+   - This is exactly what we suspected!
+
+**Conclusion:** 
+The refactor to day-number-based tracking is CRITICAL and URGENT. Users are losing credit for their reading progress.
+
+---
+
+### Implementation Complete ✅
+
+**Changes Made to `src/sheetsTracker.js`:**
+
+1. ✅ **Added Day Number Validation** (lines 123-127)
+   - Validates day number is present and between 1-366
+   - Skips tracking if day number is invalid or missing
+   - Logs warning with message ID for troubleshooting
+
+2. ✅ **Restructured Progress Sheet Columns** (lines 129-140)
+   - NEW order: Day | User | Name | Guild | Date | Reaction Time | CST Time | Channel
+   - Day number is now in Column A (primary key)
+   - Date moved to Column E (metadata only)
+
+3. ✅ **Updated Duplicate Detection** (lines 142-174)
+   - Changed from `date + userId + guild` to `dayNumber + userId + guild`
+   - Function signature: `findExistingRow(dayNumber, userId, guildName)`
+   - Now allows multiple reactions on same calendar date if different days
+
+4. ✅ **Added extractDayNumber() Helper** (lines 311-342)
+   - Supports both old format (day in column H) and new format (day in column A)
+   - Gracefully handles date strings vs day numbers
+   - Returns null for invalid/missing day numbers
+
+5. ✅ **Updated Progress Counting** (lines 507-541 in getLeaderboard())
+   - Changed from counting unique dates to counting unique day numbers
+   - Uses Set to track `completedDays.add(dayNumber)`
+   - Counts `completedDays.size` for accurate totals
+
+6. ✅ **Updated getUserProgress()** (lines 428-438)
+   - Counts unique day numbers instead of dates
+   - Calculates streak based on consecutive day numbers
+
+7. ✅ **Updated removeReactionFromSheet()** (lines 243-255)
+   - Finds rows by day number instead of date
+   - Supports both old and new column formats
+
+8. ✅ **Updated createProgressTab()** (lines 382-393)
+   - New header order matches new structure
+   - Clear logging of new format
+
+9. ✅ **Improved Logging Throughout:**
+   - "✅ Recorded Day X for user Y"
+   - "⏭️ Skipped duplicate: Day X already recorded"
+   - "⚠️ Invalid or missing day number"
+   - "📊 User X: Completed days [1, 2, 3] = 3 days"
+
+**Key Features:**
+- ✅ Backward compatible with existing Progress sheet data
+- ✅ Users can now catch up on multiple days in one sitting
+- ✅ More accurate leaderboard calculations
+- ✅ Supports reading days out of order
+- ✅ Better logging for troubleshooting
+
+**Status:** Implementation complete, ready for testing
+
 ## Lessons
 
 *This section will be updated with learnings and solutions during development*

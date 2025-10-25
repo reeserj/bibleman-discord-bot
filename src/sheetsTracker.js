@@ -120,26 +120,33 @@ class SheetsTracker {
         logger.warn(`Could not fetch server/channel info for user ${progressData.userId}:`, error.message);
       }
       
-      // Prepare the row data to match your sheet structure
+      // VALIDATION: Day number is required for tracking
+      if (!dayNumber || dayNumber < 1 || dayNumber > 366) {
+        logger.warn(`⚠️ Invalid or missing day number (${dayNumber}) for message ${progressData.messageId}, skipping tracking`);
+        return; // Exit early - don't record reactions without valid day numbers
+      }
+      
+      // NEW STRUCTURE: Put day number first (primary key)
+      // Column order: Day | User | Name | Guild | Date | Reaction Time | CST Time | Channel
       const rowData = [
-        progressData.date,           // Date column
-        progressData.userId,         // User column (Discord user ID)
-        nickname,                    // Name column (nickname in server)
-        progressData.timestamp,      // Reaction time column (CST)
-        progressData.cstTime,        // CST time column with timezone label
-        guildName,                   // Server/Guild name
-        channelName,                 // Channel name
-        dayNumber || ''              // Day number from message embed
+        dayNumber,                   // Column A: Day number (PRIMARY KEY)
+        progressData.userId,         // Column B: User (Discord user ID)
+        nickname,                    // Column C: Name (nickname in server)
+        guildName,                   // Column D: Guild (server name)
+        progressData.date,           // Column E: Date (when they reacted - metadata)
+        progressData.timestamp,      // Column F: Reaction Time (CST)
+        progressData.cstTime,        // Column G: CST Time (with timezone label)
+        channelName                  // Column H: Channel (channel name)
       ];
 
       if (progressData.action === 'add') {
-        // Multiple checks with increasing delays to prevent race conditions
+        // NEW: Check for duplicate using dayNumber + userId + guild
         for (let attempt = 1; attempt <= 3; attempt++) {
-          logger.info(`Duplicate check attempt ${attempt}: date=${progressData.date}, userId=${progressData.userId}, guild=${guildName}`);
-          const existingRow = await this.findExistingRow(progressData.date, progressData.userId, guildName);
+          logger.info(`Duplicate check attempt ${attempt}: Day ${dayNumber}, userId=${progressData.userId}, guild=${guildName}`);
+          const existingRow = await this.findExistingRow(dayNumber, progressData.userId, guildName);
           
           if (existingRow) {
-            logger.info(`Row already exists for ${nickname} (${progressData.userId}) on ${progressData.date} in ${guildName}, skipping duplicate`);
+            logger.info(`⏭️ Skipped duplicate: Day ${dayNumber} already recorded for ${nickname} in ${guildName}`);
             return; // Exit early to prevent any further processing
           }
           
@@ -150,9 +157,9 @@ class SheetsTracker {
           }
         }
         
-        logger.info(`No duplicate found after 3 attempts, adding new row for ${nickname} (${progressData.userId}) on ${progressData.date} in ${guildName}`);
+        logger.info(`No duplicate found after 3 attempts, recording Day ${dayNumber} for ${nickname} in ${guildName}`);
         
-        // Append the row to the Progress tab (now includes guild, channel, and day columns)
+        // Append the row to the Progress tab
         await this.sheets.spreadsheets.values.append({
           spreadsheetId: sheetId,
           range: `${sheetName}!A:H`,
@@ -163,8 +170,7 @@ class SheetsTracker {
           }
         });
 
-        const dayInfo = dayNumber ? ` (Day ${dayNumber})` : '';
-        logger.info(`Reaction data written to ${sheetName} tab: ${nickname} (${progressData.userId}) on ${progressData.date}${dayInfo}`);
+        logger.info(`✅ Recorded Day ${dayNumber} for ${nickname} (${progressData.userId}) in ${guildName} on ${progressData.date}`);
       } else if (progressData.action === 'remove') {
         // Remove the row from the Progress tab
         await this.removeReactionFromSheet(progressData);
@@ -191,15 +197,35 @@ class SheetsTracker {
       const sheetId = this.readingPlanSheetId;
       const sheetName = 'Progress';
       
-      // Get guild name for matching
+      // Extract day number and guild name
       let guildName = 'Unknown Server';
+      let dayNumber = null;
+      
       try {
         const guild = progressData.reaction.message.guild;
         if (guild) {
           guildName = guild.name;
         }
+        
+        // Extract day number from message
+        const message = progressData.reaction.message;
+        if (message.embeds && message.embeds.length > 0) {
+          const embed = message.embeds[0];
+          if (embed.description) {
+            const dayMatch = embed.description.match(/Day (\d+)/i);
+            if (dayMatch) {
+              dayNumber = parseInt(dayMatch[1]);
+            }
+          }
+        }
       } catch (error) {
-        logger.warn(`Could not fetch guild info:`, error.message);
+        logger.warn(`Could not fetch guild/day info:`, error.message);
+      }
+      
+      // Need day number to find the row
+      if (!dayNumber) {
+        logger.warn(`Cannot remove reaction: no day number found for message ${progressData.messageId}`);
+        return;
       }
       
       // First, get all the data to find the row to delete
@@ -214,20 +240,22 @@ class SheetsTracker {
         return;
       }
       
-      // Find the row that matches this user, date, and guild
+      // NEW: Find the row that matches this DAY NUMBER + user + guild
       let rowIndex = -1;
       for (let i = 1; i < rows.length; i++) { // Start from 1 to skip header
         const row = rows[i];
-        const rowGuild = row[5] || ''; // Column F is guild name
+        const rowDay = this.extractDayNumber(row);
+        const rowUserId = row[1]; // Column B is user ID
+        const rowGuild = row[3] || row[5] || ''; // Column D (new) or F (old) is guild
         
-        if (row[0] === progressData.date && row[1] === progressData.userId && rowGuild === guildName) {
+        if (rowDay === dayNumber && rowUserId === progressData.userId && rowGuild === guildName) {
           rowIndex = i + 1; // Convert to 1-based index for sheets
           break;
         }
       }
       
       if (rowIndex === -1) {
-        logger.warn(`No matching row found for user ${progressData.userId} on date ${progressData.date}`);
+        logger.warn(`No matching row found for user ${progressData.userId} on Day ${dayNumber}`);
         return;
       }
       
@@ -250,7 +278,7 @@ class SheetsTracker {
         }
       });
       
-      logger.info(`Row ${rowIndex} deleted from ${sheetName} tab`);
+      logger.info(`Row ${rowIndex} deleted from ${sheetName} tab (Day ${dayNumber}, user ${progressData.userId})`);
       
     } catch (error) {
       logger.error('Error removing reaction from sheet:', error);
@@ -258,7 +286,7 @@ class SheetsTracker {
     }
   }
 
-  async findExistingRow(date, userId, guildName) {
+  async findExistingRow(dayNumber, userId, guildName) {
     try {
       const sheetId = this.readingPlanSheetId;
       const sheetName = 'Progress';
@@ -273,24 +301,66 @@ class SheetsTracker {
         return null; // No data or only headers
       }
       
-      // Look for existing row with matching date, user ID, and guild name
+      // NEW: Look for existing row with matching DAY NUMBER + user ID + guild name
+      // Column A: Day, Column B: User, Column D: Guild
       for (let i = 1; i < rows.length; i++) { // Start from 1 to skip header
         const row = rows[i];
-        const rowGuild = row[5] || ''; // Column F is guild name
-        const rowDay = row[7] || ''; // Column H is day number
+        const rowDay = this.extractDayNumber(row); // Extract from either column A (new) or H (old)
+        const rowUserId = row[1] || ''; // Column B is user ID
+        const rowGuild = row[3] || row[5] || ''; // Column D is guild (new format), or Column F (old format)
         
-        if (row[0] === date && row[1] === userId && rowGuild === guildName) {
-          logger.info(`Found existing row at index ${i + 1}: date=${row[0]}, userId=${row[1]}, name=${row[2]}, guild=${row[5]}, channel=${row[6]}, day=${rowDay}`);
+        // Match on: Day number + User ID + Guild
+        if (rowDay === dayNumber && rowUserId === userId && rowGuild === guildName) {
+          logger.info(`Found existing row at index ${i + 1}: Day ${rowDay}, userId=${rowUserId}, name=${row[2]}, guild=${rowGuild}`);
           return i + 1; // Return 1-based row index
         }
       }
       
-      logger.info(`No existing row found for date=${date}, userId=${userId}, guild=${guildName}`);
+      logger.info(`No existing row found for Day ${dayNumber}, userId=${userId}, guild=${guildName}`);
       return null; // No matching row found
     } catch (error) {
       logger.error('Error finding existing row:', error);
       return null;
     }
+  }
+  
+  /**
+   * Helper function to extract day number from a row, supporting both old and new formats
+   * New format: Day is in column A (index 0)
+   * Old format: Day is in column H (index 7)
+   * Returns null if day number not found or invalid
+   */
+  extractDayNumber(row) {
+    if (!row || row.length === 0) {
+      return null;
+    }
+    
+    // Try column A first (new format)
+    const colA = row[0];
+    if (colA && typeof colA === 'number' && colA >= 1 && colA <= 366) {
+      return colA;
+    }
+    
+    // Try parsing column A as string number
+    if (colA && typeof colA === 'string' && !colA.includes('-')) {
+      const parsed = parseInt(colA);
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 366) {
+        return parsed;
+      }
+    }
+    
+    // Fall back to column H (old format) if column A looks like a date
+    if (colA && typeof colA === 'string' && colA.includes('-')) {
+      const colH = row[7];
+      if (colH) {
+        const parsed = parseInt(colH);
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 366) {
+          return parsed;
+        }
+      }
+    }
+    
+    return null;
   }
 
   async getSheetId(sheetName) {
@@ -331,8 +401,8 @@ class SheetsTracker {
         }
       });
 
-      // Add headers to the new sheet to match your structure
-      const headers = ['Date', 'User', 'Name', 'Reaction Time (CST)', 'CST Time', 'Guild', 'Channel', 'Day'];
+      // NEW STRUCTURE: Day number first (primary key)
+      const headers = ['Day', 'User', 'Name', 'Guild', 'Date', 'Reaction Time (CST)', 'CST Time', 'Channel'];
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: sheetId,
         range: 'Progress!A1:H1',
@@ -342,7 +412,7 @@ class SheetsTracker {
         }
       });
 
-      logger.info('Progress tab created successfully with headers: Date, User, Name, Reaction Time (CST), CST Time, Guild, Channel, Day');
+      logger.info('Progress tab created successfully with NEW structure: Day | User | Name | Guild | Date | Reaction Time | CST Time | Channel');
       
     } catch (error) {
       logger.error('Error creating progress tab:', error);
@@ -357,13 +427,13 @@ class SheetsTracker {
 
       logger.debug(`Getting progress for user ${userId}`);
       
-      // Read from the Progress tab
+      // Read from the Progress tab (all columns)
       const sheetId = this.readingPlanSheetId;
       const sheetName = 'Progress';
       
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
-        range: `${sheetName}!A:E`
+        range: `${sheetName}!A:H`
       });
       
       const rows = response.data.values;
@@ -377,20 +447,29 @@ class SheetsTracker {
         };
       }
       
-      // Filter rows for this user (all reactions are completions)
-      const userRows = rows.slice(1).filter(row => row[1] === userId);
+      // NEW: Filter rows for this user and extract unique day numbers
+      const completedDays = new Set();
+      rows.slice(1).forEach(row => {
+        const rowUserId = row[1]; // Column B is user ID
+        if (rowUserId === userId) {
+          const dayNumber = this.extractDayNumber(row);
+          if (dayNumber) {
+            completedDays.add(dayNumber);
+          }
+        }
+      });
       
-      const totalDays = 7; // Assuming 7 days per week
-      const completedDays = userRows.length;
-      const completionRate = totalDays > 0 ? (completedDays / totalDays) * 100 : 0;
+      const totalDays = await this.getTotalReadingDays();
+      const completedCount = completedDays.size;
+      const completionRate = totalDays > 0 ? (completedCount / totalDays) * 100 : 0;
       
-      // Calculate streak (consecutive days)
+      // Calculate streak (consecutive day numbers)
       let streak = 0;
-      const sortedDates = userRows.map(row => row[0]).sort();
+      const sortedDays = Array.from(completedDays).sort((a, b) => a - b);
       let currentStreak = 0;
       
-      for (let i = 0; i < sortedDates.length; i++) {
-        if (i === 0 || this.isConsecutiveDay(sortedDates[i-1], sortedDates[i])) {
+      for (let i = 0; i < sortedDays.length; i++) {
+        if (i === 0 || sortedDays[i] === sortedDays[i-1] + 1) {
           currentStreak++;
         } else {
           currentStreak = 1;
@@ -400,7 +479,7 @@ class SheetsTracker {
       
       return {
         totalDays,
-        completedDays,
+        completedDays: completedCount,
         streak,
         completionRate: Math.round(completionRate * 10) / 10
       };
@@ -431,13 +510,13 @@ class SheetsTracker {
 
       logger.debug('Getting leaderboard from Progress tab');
       
-      // Read from the Progress tab
+      // Read from the Progress tab (now read all columns A:H)
       const sheetId = this.readingPlanSheetId;
       const sheetName = 'Progress';
       
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
-        range: `${sheetName}!A:E`
+        range: `${sheetName}!A:H`
       });
       
       const rows = response.data.values;
@@ -453,42 +532,61 @@ class SheetsTracker {
       
       logger.debug(`Total reading days: ${totalDays}, Current day: ${currentDay}`);
       
-      // Group by user and count completions
+      // NEW: Group by user and count UNIQUE DAY NUMBERS (not dates!)
       const userCompletions = {};
       
       rows.slice(1).forEach(row => {
-        const date = row[0];
+        // Extract day number from row (supports both old and new format)
+        const dayNumber = this.extractDayNumber(row);
+        
+        // Skip rows without valid day numbers
+        if (!dayNumber) {
+          return;
+        }
+        
+        // New format: Column B is user ID, Column C is name
+        // Old format: Column B is user ID, Column C is name (same positions)
         const userId = row[1];
         const nickname = row[2];
-        const reactionTime = row[3];
         
-        // Count all reactions as completions (since we're only tracking ✅ reactions)
+        if (!userId) {
+          return; // Skip rows without user ID
+        }
+        
+        // Initialize user data if first time seeing this user
         if (!userCompletions[userId]) {
           userCompletions[userId] = {
             userId,
             username: nickname,
-            completedDays: 0,
-            dates: new Set()
+            completedDays: new Set() // Use Set to track unique day numbers
           };
         }
         
-        // Only count each date once per user
-        if (!userCompletions[userId].dates.has(date)) {
-          userCompletions[userId].completedDays++;
-          userCompletions[userId].dates.add(date);
+        // Add day number to the set (automatically handles duplicates)
+        userCompletions[userId].completedDays.add(dayNumber);
+        
+        // Update username if it's more recent/better
+        if (nickname && nickname !== userId) {
+          userCompletions[userId].username = nickname;
         }
       });
       
       // Convert to leaderboard format
       const leaderboard = Object.values(userCompletions).map(user => {
-        const completionRate = totalDays > 0 ? (user.completedDays / totalDays) * 100 : 0;
+        const completedCount = user.completedDays.size; // Count of unique days
+        const completionRate = totalDays > 0 ? (completedCount / totalDays) * 100 : 0;
         // Days behind = total days - days read
-        const daysBehind = Math.max(0, totalDays - user.completedDays);
+        const daysBehind = Math.max(0, totalDays - completedCount);
+        
+        // Convert Set to sorted array for logging
+        const completedDaysArray = Array.from(user.completedDays).sort((a, b) => a - b);
+        
+        logger.debug(`📊 User ${user.username}: Completed days [${completedDaysArray.join(', ')}] = ${completedCount} days`);
         
         return {
           userId: user.userId,
           username: user.username,
-          completedDays: user.completedDays,
+          completedDays: completedCount,
           totalDays,
           currentDay,
           completionRate: Math.round(completionRate * 10) / 10,

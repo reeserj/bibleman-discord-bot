@@ -168,15 +168,15 @@ class GroupMeService {
   }
 
   /**
-   * Send a daily reading message to both Discord and GroupMe
+   * Send a daily reading message to GroupMe
    * @param {Object} readingPlan - The reading plan data
-   * @param {string} discordMessage - The formatted Discord message
+   * @param {string} aiQuestion - AI-generated application question (optional)
    * @returns {Promise<boolean>} - Success status
    */
-  async sendDailyReadingToGroupMe(readingPlan, discordMessage) {
+  async sendDailyReadingToGroupMe(readingPlan, aiQuestion = null) {
     try {
-      // Create a simplified version for GroupMe
-      const groupMeMessage = this.createGroupMeReadingMessage(readingPlan);
+      // Create a GroupMe message that matches Discord format exactly
+      const groupMeMessage = this.createGroupMeReadingMessage(readingPlan, aiQuestion);
       
       const success = await this.sendBiblePlanMessage(groupMeMessage, {
         isEmbed: true,
@@ -192,84 +192,75 @@ class GroupMeService {
 
   /**
    * Create a GroupMe-friendly daily reading message
+   * Matches the Discord bot format exactly
    * @param {Object} readingPlan - The reading plan data
+   * @param {string} aiQuestion - AI-generated application question (optional)
    * @returns {string} - Formatted message for GroupMe
    */
-  createGroupMeReadingMessage(readingPlan) {
+  createGroupMeReadingMessage(readingPlan, aiQuestion = null) {
     const date = readingPlan.date || new Date().toISOString().split('T')[0];
-    const progressInfo = this.calculateProgress(readingPlan);
+    const dayNumber = readingPlan.day || 1;
+    const percentage = this.calculateProgressPercentage(readingPlan);
     
-    let message = `📖 *Daily Bible Reading - ${date}*\n\n`;
-    message += `*Day ${progressInfo.dayNumber}* (${progressInfo.percentage}% complete)\n`;
-    message += `📖 Daily Bible Reading Assignment\n\n`;
-
-    // Add reading assignment if available
-    if (readingPlan.due && readingPlan.due.trim()) {
-      message += `📚 *Today's Reading:* ${readingPlan.due}\n\n`;
+    // Title
+    let message = `📖 Daily Bible Reading - ${date}\n\n`;
+    
+    // Description (same as Discord)
+    message += `Day ${dayNumber} (${percentage}% complete)\n`;
+    
+    // Reading assignment from Reading column (same as Discord)
+    if (readingPlan.reading && readingPlan.reading.trim()) {
+      message += `📖 ${readingPlan.reading}\n\n`;
+    } else {
+      message += `📖 Daily Bible Reading Assignment\n\n`;
     }
 
-    // Add bonus content and resources
-    const bonusContent = [];
+    // Collect links from the same three columns as Discord
+    const links = [];
+
+    // Add 10 Minute Bible Hour link if available (same order as Discord)
+    if (readingPlan.tenMinBible && readingPlan.tenMinBible.trim()) {
+      links.push(readingPlan.tenMinBible);
+    }
 
     // Add Bible Project link if available
     if (readingPlan.bibleProject && readingPlan.bibleProject.trim()) {
-      bonusContent.push(`🎥 *Bible Project Video:* ${readingPlan.bibleProject}`);
+      links.push(readingPlan.bibleProject);
     }
 
-    // Add 10 Minute Bible Hour link if available
-    if (readingPlan.tenMinBible && readingPlan.tenMinBible.trim()) {
-      bonusContent.push(`⏰ *10 Minute Bible Hour:* ${readingPlan.tenMinBible}`);
-    }
-
-    // Add AI-generated book introduction if available
-    if (readingPlan.aiSummary && readingPlan.aiSummary.trim()) {
-      bonusContent.push(`📖 *Book Introduction:* ${readingPlan.aiSummary}`);
-    } else if (readingPlan.startOfBook && readingPlan.startOfBook.trim()) {
-      bonusContent.push(`📖 *Book Introduction:* ${readingPlan.startOfBook}`);
-    }
-
-    // Add additional bonus content if available
+    // Add Bonus link if available
     if (readingPlan.bonus && readingPlan.bonus.trim()) {
-      bonusContent.push(readingPlan.bonus);
+      links.push(readingPlan.bonus);
     }
 
-    // Add bonus content if any exists
-    if (bonusContent.length > 0) {
-      message += `🎁 *Bonus Content & Resources:*\n`;
-      message += bonusContent.join('\n') + '\n\n';
+    // Add bonus content field if there are links (same as Discord)
+    if (links.length > 0) {
+      message += `🎁 Bonus Content & Resources:\n`;
+      message += links.join('\n') + '\n\n';
     }
 
-    message += `React with ✅ when completed!`;
+    // Add AI-generated question if available (same as Discord)
+    if (aiQuestion && aiQuestion.trim()) {
+      message += `❓ Question of the Day:\n`;
+      message += `${aiQuestion}\n\n`;
+    }
+
+    // Footer (same as Discord)
+    message += `React with ✅ when completed`;
 
     return message;
   }
 
   /**
-   * Calculate progress information (copied from MessageFormatter)
+   * Calculate progress percentage (same as Discord MessageFormatter)
    * @param {Object} readingPlan - The reading plan data
-   * @returns {Object} - Progress information
+   * @returns {string} - Progress percentage
    */
-  calculateProgress(readingPlan) {
-    const readingValue = readingPlan.reading || 0;
-    const dayValue = readingPlan.day || 0;
-    
-    let percentage = 0;
-    let dayNumber = 1;
-    
-    if (readingValue > 0) {
-      dayNumber = readingValue;
-      percentage = Math.round((readingValue / 365) * 100 * 100) / 100;
-    } else if (dayValue > 0) {
-      dayNumber = dayValue;
-      percentage = Math.round((dayValue / 365) * 100 * 100) / 100;
-    }
-    
-    percentage = Math.min(percentage, 100);
-    
-    return {
-      dayNumber,
-      percentage: percentage.toFixed(1)
-    };
+  calculateProgressPercentage(readingPlan) {
+    // Use the day number to calculate percentage (assuming 365-day plan)
+    const dayNumber = readingPlan.day || 0;
+    const percentage = Math.round((dayNumber / 365) * 100 * 100) / 100;
+    return Math.min(percentage, 100).toFixed(1);
   }
 
   /**

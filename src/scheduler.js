@@ -47,6 +47,9 @@ class Scheduler {
 
   async sendDailyReading() {
     try {
+      let readingPlan = null;
+      let aiQuestion = null;
+      
       // Send to all configured guilds
       for (const guild of this.client.guilds.cache.values()) {
         const channelId = this.guildConfig.getChannelId(guild.id);
@@ -56,14 +59,32 @@ class Scheduler {
           continue;
         }
         
-        await this.sendDailyReadingToChannel(channelId, guild);
+        // Pass readingPlan and aiQuestion so they're only generated once
+        const result = await this.sendDailyReadingToChannel(channelId, guild, readingPlan, aiQuestion);
+        
+        // Store the reading plan and AI question from the first send to reuse
+        if (!readingPlan && result) {
+          readingPlan = result.readingPlan;
+          aiQuestion = result.aiQuestion;
+        }
+      }
+      
+      // Send to GroupMe ONCE after all Discord channels (not per channel)
+      if (readingPlan) {
+        try {
+          await this.groupMeService.sendDailyReadingToGroupMe(readingPlan, aiQuestion);
+          logger.info('Daily reading sent to GroupMe successfully');
+        } catch (groupMeError) {
+          logger.error('Failed to send daily reading to GroupMe:', groupMeError);
+          // Don't fail the entire operation if GroupMe fails
+        }
       }
     } catch (error) {
       logger.error('Failed to send daily reading:', error);
     }
   }
 
-  async sendDailyReadingToChannel(channelId, guild) {
+  async sendDailyReadingToChannel(channelId, guild, existingReadingPlan = null, existingAiQuestion = null) {
     try {
 
       // Check if channel has changed
@@ -81,40 +102,58 @@ class Scheduler {
 
       const channel = channelValidation.channel;
 
-      // Get today's reading plan
       const today = moment().tz(this.timezone).format('YYYY-MM-DD');
-      logger.info(`Sending daily reading for ${today}`);
+      logger.info(`Sending daily reading for ${today} to channel ${channelId}`);
 
-      // TODO: Get reading plan from Google Sheets
-      const readingPlan = await this.getTodaysReadingPlan(today);
+      // Use existing reading plan if provided, otherwise fetch it
+      let readingPlan = existingReadingPlan;
+      let aiQuestion = existingAiQuestion;
       
       if (!readingPlan) {
-        logger.warn(`No reading plan found for ${today}`);
-        return;
+        readingPlan = await this.getTodaysReadingPlan(today);
+        
+        if (!readingPlan) {
+          logger.warn(`No reading plan found for ${today}`);
+          return null;
+        }
       }
 
-      // Format message with MessageFormatter
+      // Generate AI question only if not already generated
+      if (!aiQuestion) {
+        try {
+          if (readingPlan.reading && readingPlan.reading.trim()) {
+            const AIService = require('./aiService');
+            const aiService = new AIService();
+            aiQuestion = await aiService.generateApplicationQuestion(readingPlan.reading);
+            logger.info('AI question generated for daily reading');
+          }
+        } catch (aiError) {
+          logger.warn('Failed to generate AI question:', aiError.message);
+          // Continue without AI question
+        }
+      }
+
+      // Format message with MessageFormatter (pass AI question to avoid generating twice)
+      readingPlan.aiQuestion = aiQuestion; // Attach AI question to reading plan
       const formattedMessage = await this.messageFormatter.formatDailyReading(readingPlan);
       
-      // Send the message
+      // Send the message to Discord
       const message = await channel.send(formattedMessage);
       
       // Add reaction buttons
       await message.react('✅'); // Completed
       
-      logger.info(`Daily reading message sent successfully for ${today}`);
+      logger.info(`Daily reading message sent successfully for ${today} to channel ${channelId}`);
       
-      // Also send to GroupMe Bible Plan group
-      try {
-        await this.groupMeService.sendDailyReadingToGroupMe(readingPlan, formattedMessage);
-      } catch (groupMeError) {
-        logger.error('Failed to send daily reading to GroupMe:', groupMeError);
-        // Don't fail the entire operation if GroupMe fails
-      }
+      // Return reading plan and AI question for reuse
+      return {
+        readingPlan: readingPlan,
+        aiQuestion: aiQuestion
+      };
       
     } catch (error) {
-      logger.error('Failed to send daily reading:', error);
-      throw error;
+      logger.error('Failed to send daily reading to channel:', error);
+      return null;
     }
   }
 

@@ -107,26 +107,37 @@ class MessageFormatter {
       });
     }
 
-    // Generate AI application question (positioned after bonus content)
-    try {
-      if (readingPlan.reading && readingPlan.reading.trim()) {
-        logger.debug('Generating AI application question...');
-        const question = await this.aiService.generateApplicationQuestion(readingPlan.reading);
-        
-        if (question) {
-          fields.push({
-            name: '❓ Question of the Day',
-            value: question,
-            inline: false
-          });
-          logger.info('AI application question added to message');
-        } else {
-          logger.debug('No AI question generated, skipping field');
+    // Add AI application question if available (positioned after bonus content)
+    // Check if AI question was pre-generated (to avoid generating twice)
+    if (readingPlan.aiQuestion) {
+      fields.push({
+        name: '❓ Question of the Day',
+        value: readingPlan.aiQuestion,
+        inline: false
+      });
+      logger.info('AI application question added to message');
+    } else {
+      // Generate AI question if not pre-generated
+      try {
+        if (readingPlan.reading && readingPlan.reading.trim()) {
+          logger.debug('Generating AI application question...');
+          const question = await this.aiService.generateApplicationQuestion(readingPlan.reading);
+          
+          if (question) {
+            fields.push({
+              name: '❓ Question of the Day',
+              value: question,
+              inline: false
+            });
+            logger.info('AI application question added to message');
+          } else {
+            logger.debug('No AI question generated, skipping field');
+          }
         }
+      } catch (error) {
+        // Gracefully handle AI failures - just skip the question field
+        logger.warn('Failed to generate AI application question, skipping field:', error.message);
       }
-    } catch (error) {
-      // Gracefully handle AI failures - just skip the question field
-      logger.warn('Failed to generate AI application question, skipping field:', error.message);
     }
 
     return fields;
