@@ -338,7 +338,6 @@ class SheetsTracker {
     // Try column A first (new format)
     const colA = row[0];
     if (colA && typeof colA === 'number' && colA >= 1 && colA <= 366) {
-      logger.debug(`extractDayNumber: Found day ${colA} in column A (new format)`);
       return colA;
     }
     
@@ -346,7 +345,6 @@ class SheetsTracker {
     if (colA && typeof colA === 'string' && !colA.includes('-')) {
       const parsed = parseInt(colA);
       if (!isNaN(parsed) && parsed >= 1 && parsed <= 366) {
-        logger.debug(`extractDayNumber: Parsed day ${parsed} from column A string (new format)`);
         return parsed;
       }
     }
@@ -354,22 +352,14 @@ class SheetsTracker {
     // Fall back to column H (old format) if column A looks like a date
     if (colA && typeof colA === 'string' && colA.includes('-')) {
       const colH = row[7];
-      logger.debug(`extractDayNumber: Column A is date "${colA}", checking column H for day number`);
       if (colH) {
-        logger.debug(`extractDayNumber: Column H value: "${colH}" (type: ${typeof colH})`);
         const parsed = parseInt(colH);
         if (!isNaN(parsed) && parsed >= 1 && parsed <= 366) {
-          logger.debug(`extractDayNumber: Extracted day ${parsed} from column H (old format)`);
           return parsed;
-        } else {
-          logger.debug(`extractDayNumber: Column H parse failed or out of range: ${parsed}`);
         }
-      } else {
-        logger.debug(`extractDayNumber: Column H is empty`);
       }
     }
     
-    logger.debug(`extractDayNumber: Could not extract day number from row`);
     return null;
   }
 
