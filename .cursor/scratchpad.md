@@ -2211,6 +2211,63 @@ React with ✅ when completed
 - Weekly updates will now show accurate days behind counts
 - Next Sunday update (Oct 27) will use the corrected calculation
 
+**DAY NUMBER TRACKING ENHANCEMENT** ✅
+
+**User Request:**
+- Add day number tracking to Progress sheet for better troubleshooting
+- Want to see which day number was in the message when users reacted
+
+**Implementation:**
+1. **Extract Day Number from Message Embed:**
+   - Parse the embed description for "Day X (Y% complete)" format
+   - Extract day number using regex match
+   - Store in variable for logging
+
+2. **Add Day Column to Progress Sheet:**
+   - Added column H for day number
+   - Updated all sheet ranges from A:G to A:H
+   - Updated createProgressTab to include "Day" header
+
+3. **Enhanced Logging:**
+   - Log day number when writing reactions: "(Day X)"
+   - Show day number in duplicate detection logs
+   - Helps verify correct day tracking
+
+**Files Modified:**
+- `src/sheetsTracker.js`:
+  - Added day number extraction from message embeds
+  - Updated rowData to include dayNumber as 8th column
+  - Updated all ranges: A:G → A:H
+  - Enhanced logging with day number info
+  - Updated createProgressTab headers
+
+**Progress Sheet Structure (Updated):**
+- Column A: Date
+- Column B: User (Discord user ID)
+- Column C: Name (nickname in server)
+- Column D: Reaction Time (CST)
+- Column E: CST Time (with timezone label)
+- Column F: Guild (server name)
+- Column G: Channel (channel name)
+- Column H: Day (day number from message) ✨ NEW
+
+**Git Commit:**
+- **Commit Hash**: 9d9d0ea
+- **Commit Message**: "feat: Add day number tracking to Progress sheet for better troubleshooting"
+- **Files Modified**: src/sheetsTracker.js, .cursor/scratchpad.md (2 files changed, 949 insertions(+), 11 deletions(-))
+
+**Benefits:**
+- Easier troubleshooting of day tracking issues
+- Can verify correct day was logged for each reaction
+- Helps identify if users are reacting to old messages
+- Better audit trail for reading progress
+
+**Current Status:**
+- Enhancement deployed to GitHub
+- New reactions will include day number in Progress sheet
+- Existing rows won't have day numbers (column will be empty for old data)
+- Next reaction will test the new logging
+
 ## Lessons
 
 *This section will be updated with learnings and solutions during development*
