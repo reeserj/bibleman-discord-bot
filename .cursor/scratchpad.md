@@ -2958,6 +2958,47 @@ The bot can now:
 
 **Production Ready:** Bot is ready to track reactions with the new day-based system. Future reactions will automatically use the new format and users can catch up on multiple days without losing credit.
 
+---
+
+### Duplicate Protection & Sync Script ✅
+
+**User Concern:** Ensure no duplicate days are recorded when syncing or reacting
+
+**Solution Implemented:**
+
+1. **Regular Bot Reaction Tracking** (Already Protected)
+   - `writeReactionToSheet()` checks for duplicates BEFORE adding
+   - Checks: `dayNumber + userId + guild` (not date!)
+   - 3-attempt check with delays to prevent race conditions
+   - Logs: "⏭️ Skipped duplicate: Day X already recorded for user Y"
+   - Location: `src/sheetsTracker.js` lines 144-150
+
+2. **Sync Script for Bot Restarts** (New - Optimized)
+   - Created `sync-from-discord.js` for catching missed reactions
+   - Does NOT clear existing data (unlike migrate script)
+   - Reads entire Progress sheet ONCE into memory (1 API call)
+   - Checks all 83 Discord reactions against memory (0 API calls)
+   - Only adds missing reactions
+   - Fully idempotent - safe to run multiple times
+   - Safe to run on bot startup
+
+**Testing Results:**
+- Sync script tested: 72 existing reactions correctly skipped, 11 missing added
+- No duplicates created
+- Efficient: 1 read + N writes (where N = missing reactions)
+
+**Git Commit:**
+- Commit ff25e1d: Optimized sync script with duplicate protection
+
+**Usage:**
+```bash
+# Run sync manually (if needed)
+node sync-from-discord.js
+
+# Or integrate into bot startup (recommended)
+# Add to bot.js initialization
+```
+
 ## Lessons
 
 *This section will be updated with learnings and solutions during development*
