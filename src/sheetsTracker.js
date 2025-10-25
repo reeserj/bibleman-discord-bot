@@ -518,11 +518,15 @@ class SheetsTracker {
         return 7; // Fallback to 7 days
       }
       
-      // Calculate total days as current date - first reading date
-      const firstDate = new Date(firstReadingDate);
-      const currentDate = new Date();
+      // Calculate total days as: days elapsed since start date
+      // Convert dates to simple YYYY-MM-DD strings to avoid timezone issues
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Count days from first date to today (inclusive of start, exclusive of today)
+      const firstDate = new Date(firstReadingDate + 'T00:00:00Z');
+      const currentDate = new Date(today + 'T00:00:00Z');
       const timeDiff = currentDate.getTime() - firstDate.getTime();
-      const totalDays = Math.max(1, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1); // +1 to include both start and end dates
+      const totalDays = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
       
       logger.debug(`Total reading days calculated: ${totalDays} (from ${firstReadingDate} to ${currentDate.toISOString().split('T')[0]})`);
       return totalDays;
@@ -561,11 +565,15 @@ class SheetsTracker {
         return 1; // Fallback to day 1
       }
       
-      // Calculate current day as current date - first reading date + 1
-      const firstDate = new Date(firstReadingDate);
-      const currentDate = new Date();
+      // Calculate current day as: days elapsed since start date
+      // Convert dates to simple YYYY-MM-DD strings to avoid timezone issues
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Count days from first date to today (inclusive of start, exclusive of today)
+      const firstDate = new Date(firstReadingDate + 'T00:00:00Z');
+      const currentDate = new Date(today + 'T00:00:00Z');
       const timeDiff = currentDate.getTime() - firstDate.getTime();
-      const currentDay = Math.max(1, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1); // +1 to include both start and end dates
+      const currentDay = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
       
       logger.debug(`Current reading day calculated: ${currentDay} (from ${firstReadingDate} to ${currentDate.toISOString().split('T')[0]})`);
       return currentDay;
